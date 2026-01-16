@@ -49,20 +49,28 @@ class DangerousFunctionsChooser(ida_kernwin.Choose):
             return self.items[n]
         return ["", "", "", "", "", ""]
     
-    def OnSelectLine(self, n):
-        """Handle Enter key or double-click - jump to address"""
+    def OnSelectLine(self, sel):
+        """Handle Enter key - jump to address"""
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
         self._jump_to_line(n)
     
-    def OnDblClick(self, n):
+    def OnDblClick(self, sel):
         """Handle double-click - jump to address"""
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
         self._jump_to_line(n)
         return True
     
     def _jump_to_line(self, n):
         """Jump to the address of the selected line"""
-        if n >= 0 and n < len(self.items):
-            item = self.items[n]
-            try:
+        try:
+            if n >= 0 and n < len(self.items):
+                item = self.items[n]
                 # Jump to call site address (column 4)
                 addr_str = item[4]
                 if addr_str:
@@ -72,8 +80,8 @@ class DangerousFunctionsChooser(ida_kernwin.Choose):
                         addr = int(addr_str)
                     print(f"[MCP] 跳转到: {hex(addr)}")
                     ida_kernwin.jumpto(addr)
-            except Exception as e:
-                print(f"[MCP] 跳转失败: {e}")
+        except Exception as e:
+            print(f"[MCP] 跳转失败: {e}, n={n}, type={type(n)}")
     
     def OnRefresh(self, n):
         self.Refresh()
@@ -181,20 +189,29 @@ class CommandInjectionChooser(ida_kernwin.Choose):
             return self.items[n]
         return ["", "", "", "", "", "", "", ""]
     
-    def OnSelectLine(self, n):
-        """Handle Enter key or double-click - jump to address"""
+    def OnSelectLine(self, sel):
+        """Handle Enter key - jump to address"""
+        # sel can be a list in multi-select mode or an integer
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
         self._jump_to_line(n)
     
-    def OnDblClick(self, n):
+    def OnDblClick(self, sel):
         """Handle double-click - jump to address"""
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
         self._jump_to_line(n)
         return True
     
     def _jump_to_line(self, n):
         """Jump to the address of the selected line"""
-        if n >= 0 and n < len(self.items):
-            item = self.items[n]
-            try:
+        try:
+            if n >= 0 and n < len(self.items):
+                item = self.items[n]
                 # Jump to call site address (column 4)
                 addr_str = item[4]
                 if addr_str:
@@ -204,8 +221,8 @@ class CommandInjectionChooser(ida_kernwin.Choose):
                         addr = int(addr_str)
                     print(f"[MCP] 跳转到: {hex(addr)}")
                     ida_kernwin.jumpto(addr)
-            except Exception as e:
-                print(f"[MCP] 跳转失败: {e}")
+        except Exception as e:
+            print(f"[MCP] 跳转失败: {e}, n={n}, type={type(n)}")
     
     def OnRefresh(self, n):
         self.Refresh()
@@ -315,20 +332,28 @@ class SourceFunctionsChooser(ida_kernwin.Choose):
             return self.items[n]
         return ["", "", "", ""]
     
-    def OnSelectLine(self, n):
-        """Handle Enter key or double-click - jump to address"""
+    def OnSelectLine(self, sel):
+        """Handle Enter key - jump to address"""
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
         self._jump_to_line(n)
     
-    def OnDblClick(self, n):
+    def OnDblClick(self, sel):
         """Handle double-click - jump to address"""
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
         self._jump_to_line(n)
         return True
     
     def _jump_to_line(self, n):
         """Jump to the address of the selected line"""
-        if n >= 0 and n < len(self.items):
-            item = self.items[n]
-            try:
+        try:
+            if n >= 0 and n < len(self.items):
+                item = self.items[n]
                 # Jump to function address (column 1)
                 addr_str = item[1]
                 if addr_str:
@@ -338,8 +363,8 @@ class SourceFunctionsChooser(ida_kernwin.Choose):
                         addr = int(addr_str)
                     print(f"[MCP] 跳转到: {hex(addr)}")
                     ida_kernwin.jumpto(addr)
-            except Exception as e:
-                print(f"[MCP] 跳转失败: {e}")
+        except Exception as e:
+            print(f"[MCP] 跳转失败: {e}, n={n}, type={type(n)}")
     
     def OnRefresh(self, n):
         self.Refresh()
