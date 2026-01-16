@@ -7,6 +7,23 @@ import idaapi
 from .api_dangerous import find_dangerous_calls, DANGEROUS_FUNCTIONS
 from .api_taint import scan_command_injection, SOURCE_FUNCTIONS, SINK_FUNCTIONS
 
+# Lazy imports for new modules (to avoid circular imports)
+def _get_buffer_scanner():
+    from .api_buffer import scan_buffer_overflows
+    return scan_buffer_overflows
+
+def _get_format_string_scanner():
+    from .api_format_string import scan_format_string_vulns
+    return scan_format_string_vulns
+
+def _get_path_traversal_scanner():
+    from .api_path_traversal import scan_path_traversal_vulns
+    return scan_path_traversal_vulns
+
+def _get_callgraph_builder():
+    from .api_callgraph import build_call_graph, generate_mermaid_diagram
+    return build_call_graph, generate_mermaid_diagram
+
 
 # ============================================================================
 # Dangerous Functions Viewer
@@ -507,6 +524,370 @@ class ExploitChainViewer(ida_kernwin.simplecustviewer_t):
 
 
 # ============================================================================
+# Buffer Overflow Viewer
+# ============================================================================
+
+class BufferOverflowChooser(ida_kernwin.Choose):
+    """IDA Chooser window for displaying buffer overflow vulnerabilities"""
+    
+    def __init__(self, title="缓冲区溢出扫描结果"):
+        self.items = []
+        self.icon = 0
+        
+        columns = [
+            ["#", 4],
+            ["严重性", 8],
+            ["类型", 15],
+            ["函数", 25],
+            ["位置", 12],
+            ["描述", 50],
+        ]
+        
+        ida_kernwin.Choose.__init__(
+            self,
+            title,
+            columns,
+            flags=ida_kernwin.Choose.CH_MULTI | ida_kernwin.Choose.CH_CAN_REFRESH,
+        )
+        
+        self.Refresh()
+    
+    def OnInit(self):
+        return True
+    
+    def OnGetSize(self):
+        return len(self.items)
+    
+    def OnGetLine(self, n):
+        if n < len(self.items):
+            return self.items[n]
+        return ["", "", "", "", "", ""]
+    
+    def OnSelectLine(self, sel):
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
+        self._jump_to_line(n)
+    
+    def OnDblClick(self, sel):
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
+        self._jump_to_line(n)
+        return True
+    
+    def _jump_to_line(self, n):
+        try:
+            if n >= 0 and n < len(self.items):
+                item = self.items[n]
+                addr_str = item[4]
+                if addr_str:
+                    if addr_str.startswith("0x"):
+                        addr = int(addr_str, 16)
+                    else:
+                        addr = int(addr_str)
+                    print(f"[MCP] 跳转到: {hex(addr)}")
+                    ida_kernwin.jumpto(addr)
+        except Exception as e:
+            print(f"[MCP] 跳转失败: {e}")
+    
+    def OnRefresh(self, n):
+        self.Refresh()
+        return [ida_kernwin.Choose.ALL_CHANGED] + self.adjust_last_item(n)
+    
+    def OnGetIcon(self, n):
+        if n < len(self.items):
+            severity = self.items[n][1]
+            if "critical" in severity or "严重" in severity:
+                return 59
+            elif "high" in severity or "高" in severity:
+                return 60
+            elif "medium" in severity or "中" in severity:
+                return 61
+            else:
+                return 62
+        return 0
+    
+    def Refresh(self):
+        self.items = []
+        
+        try:
+            scan_buffer_overflows = _get_buffer_scanner()
+            results = scan_buffer_overflows()
+            
+            severity_map = {
+                "critical": "🔴严重",
+                "high": "🟠高危",
+                "medium": "🟡中危",
+                "low": "🟢低危",
+            }
+            
+            for i, vuln in enumerate(results, 1):
+                self.items.append([
+                    str(i),
+                    severity_map.get(vuln.get("severity", "low"), vuln.get("severity", "")),
+                    vuln.get("vuln_type", ""),
+                    vuln.get("function", ""),
+                    vuln.get("location", ""),
+                    vuln.get("description", "")[:50],
+                ])
+        except Exception as e:
+            print(f"[MCP] 扫描缓冲区溢出时出错: {e}")
+        
+        return True
+    
+    def show_window(self):
+        return ida_kernwin.Choose.Show(self)
+
+
+# ============================================================================
+# Format String Viewer
+# ============================================================================
+
+class FormatStringChooser(ida_kernwin.Choose):
+    """IDA Chooser window for displaying format string vulnerabilities"""
+    
+    def __init__(self, title="格式化字符串漏洞扫描"):
+        self.items = []
+        self.icon = 0
+        
+        columns = [
+            ["#", 4],
+            ["严重性", 8],
+            ["函数", 20],
+            ["格式函数", 15],
+            ["调用位置", 12],
+            ["可控性", 8],
+            ["反汇编", 40],
+        ]
+        
+        ida_kernwin.Choose.__init__(
+            self,
+            title,
+            columns,
+            flags=ida_kernwin.Choose.CH_MULTI | ida_kernwin.Choose.CH_CAN_REFRESH,
+        )
+        
+        self.Refresh()
+    
+    def OnInit(self):
+        return True
+    
+    def OnGetSize(self):
+        return len(self.items)
+    
+    def OnGetLine(self, n):
+        if n < len(self.items):
+            return self.items[n]
+        return ["", "", "", "", "", "", ""]
+    
+    def OnSelectLine(self, sel):
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
+        self._jump_to_line(n)
+    
+    def OnDblClick(self, sel):
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
+        self._jump_to_line(n)
+        return True
+    
+    def _jump_to_line(self, n):
+        try:
+            if n >= 0 and n < len(self.items):
+                item = self.items[n]
+                addr_str = item[4]
+                if addr_str:
+                    if addr_str.startswith("0x"):
+                        addr = int(addr_str, 16)
+                    else:
+                        addr = int(addr_str)
+                    print(f"[MCP] 跳转到: {hex(addr)}")
+                    ida_kernwin.jumpto(addr)
+        except Exception as e:
+            print(f"[MCP] 跳转失败: {e}")
+    
+    def OnRefresh(self, n):
+        self.Refresh()
+        return [ida_kernwin.Choose.ALL_CHANGED] + self.adjust_last_item(n)
+    
+    def OnGetIcon(self, n):
+        if n < len(self.items):
+            severity = self.items[n][1]
+            if "critical" in severity or "严重" in severity:
+                return 59
+            elif "high" in severity or "高" in severity:
+                return 60
+            else:
+                return 61
+        return 0
+    
+    def Refresh(self):
+        self.items = []
+        
+        try:
+            scan_format_string = _get_format_string_scanner()
+            results = scan_format_string()
+            
+            severity_map = {
+                "critical": "🔴严重",
+                "high": "🟠高危",
+                "medium": "🟡中危",
+                "low": "🟢低危",
+            }
+            
+            for i, vuln in enumerate(results, 1):
+                self.items.append([
+                    str(i),
+                    severity_map.get(vuln.get("severity", "low"), vuln.get("severity", "")),
+                    vuln.get("func_name", ""),
+                    vuln.get("format_func", ""),
+                    vuln.get("call_site", ""),
+                    vuln.get("controllability", ""),
+                    vuln.get("disasm", "")[:40],
+                ])
+        except Exception as e:
+            print(f"[MCP] 扫描格式化字符串时出错: {e}")
+        
+        return True
+    
+    def show_window(self):
+        return ida_kernwin.Choose.Show(self)
+
+
+# ============================================================================
+# Path Traversal Viewer
+# ============================================================================
+
+class PathTraversalChooser(ida_kernwin.Choose):
+    """IDA Chooser window for displaying path traversal vulnerabilities"""
+    
+    def __init__(self, title="路径穿越漏洞扫描"):
+        self.items = []
+        self.icon = 0
+        
+        columns = [
+            ["#", 4],
+            ["严重性", 8],
+            ["类型", 15],
+            ["函数", 20],
+            ["文件操作", 12],
+            ["调用位置", 12],
+            ["路径来源", 10],
+        ]
+        
+        ida_kernwin.Choose.__init__(
+            self,
+            title,
+            columns,
+            flags=ida_kernwin.Choose.CH_MULTI | ida_kernwin.Choose.CH_CAN_REFRESH,
+        )
+        
+        self.Refresh()
+    
+    def OnInit(self):
+        return True
+    
+    def OnGetSize(self):
+        return len(self.items)
+    
+    def OnGetLine(self, n):
+        if n < len(self.items):
+            return self.items[n]
+        return ["", "", "", "", "", "", ""]
+    
+    def OnSelectLine(self, sel):
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
+        self._jump_to_line(n)
+    
+    def OnDblClick(self, sel):
+        if isinstance(sel, list):
+            n = sel[0] if sel else -1
+        else:
+            n = sel
+        self._jump_to_line(n)
+        return True
+    
+    def _jump_to_line(self, n):
+        try:
+            if n >= 0 and n < len(self.items):
+                item = self.items[n]
+                addr_str = item[5]
+                if addr_str:
+                    if addr_str.startswith("0x"):
+                        addr = int(addr_str, 16)
+                    else:
+                        addr = int(addr_str)
+                    print(f"[MCP] 跳转到: {hex(addr)}")
+                    ida_kernwin.jumpto(addr)
+        except Exception as e:
+            print(f"[MCP] 跳转失败: {e}")
+    
+    def OnRefresh(self, n):
+        self.Refresh()
+        return [ida_kernwin.Choose.ALL_CHANGED] + self.adjust_last_item(n)
+    
+    def OnGetIcon(self, n):
+        if n < len(self.items):
+            severity = self.items[n][1]
+            if "critical" in severity or "严重" in severity:
+                return 59
+            elif "high" in severity or "高" in severity:
+                return 60
+            else:
+                return 61
+        return 0
+    
+    def Refresh(self):
+        self.items = []
+        
+        try:
+            scan_path_traversal = _get_path_traversal_scanner()
+            results = scan_path_traversal()
+            
+            severity_map = {
+                "critical": "🔴严重",
+                "high": "🟠高危",
+                "medium": "🟡中危",
+                "low": "🟢低危",
+            }
+            
+            type_map = {
+                "directory_traversal": "目录穿越",
+                "symlink_attack": "符号链接攻击",
+                "race_condition": "竞争条件",
+                "temp_file_attack": "临时文件攻击",
+            }
+            
+            for i, vuln in enumerate(results, 1):
+                self.items.append([
+                    str(i),
+                    severity_map.get(vuln.get("severity", "low"), vuln.get("severity", "")),
+                    type_map.get(vuln.get("vuln_type", ""), vuln.get("vuln_type", "")),
+                    vuln.get("func_name", ""),
+                    vuln.get("file_func", ""),
+                    vuln.get("call_site", ""),
+                    vuln.get("path_source", ""),
+                ])
+        except Exception as e:
+            print(f"[MCP] 扫描路径穿越时出错: {e}")
+        
+        return True
+    
+    def show_window(self):
+        return ida_kernwin.Choose.Show(self)
+
+
+# ============================================================================
 # Main Window Manager
 # ============================================================================
 
@@ -517,6 +898,9 @@ class VulnScannerWindow:
     _cmdi_chooser = None
     _source_chooser = None
     _chain_viewer = None
+    _buffer_chooser = None
+    _format_string_chooser = None
+    _path_traversal_chooser = None
     
     @classmethod
     def show_dangerous_functions(cls):
@@ -543,10 +927,37 @@ class VulnScannerWindow:
         return cls._source_chooser
     
     @classmethod
+    def show_buffer_overflow(cls):
+        """Show buffer overflow scanner window"""
+        if cls._buffer_chooser is None:
+            cls._buffer_chooser = BufferOverflowChooser()
+        cls._buffer_chooser.show_window()
+        return cls._buffer_chooser
+    
+    @classmethod
+    def show_format_string(cls):
+        """Show format string scanner window"""
+        if cls._format_string_chooser is None:
+            cls._format_string_chooser = FormatStringChooser()
+        cls._format_string_chooser.show_window()
+        return cls._format_string_chooser
+    
+    @classmethod
+    def show_path_traversal(cls):
+        """Show path traversal scanner window"""
+        if cls._path_traversal_chooser is None:
+            cls._path_traversal_chooser = PathTraversalChooser()
+        cls._path_traversal_chooser.show_window()
+        return cls._path_traversal_chooser
+    
+    @classmethod
     def show_all(cls):
         """Show all scanner windows"""
         cls.show_dangerous_functions()
         cls.show_command_injection()
+        cls.show_buffer_overflow()
+        cls.show_format_string()
+        cls.show_path_traversal()
     
     @classmethod
     def refresh_all(cls):
@@ -557,6 +968,12 @@ class VulnScannerWindow:
             cls._cmdi_chooser.Refresh()
         if cls._source_chooser:
             cls._source_chooser.Refresh()
+        if cls._buffer_chooser:
+            cls._buffer_chooser.Refresh()
+        if cls._format_string_chooser:
+            cls._format_string_chooser.Refresh()
+        if cls._path_traversal_chooser:
+            cls._path_traversal_chooser.Refresh()
 
 
 # ============================================================================
@@ -619,6 +1036,48 @@ class ShowAllScannersAction(ida_kernwin.action_handler_t):
         return ida_kernwin.AST_ENABLE_ALWAYS
 
 
+class BufferOverflowAction(ida_kernwin.action_handler_t):
+    """Action handler for showing buffer overflow window"""
+    
+    def __init__(self):
+        ida_kernwin.action_handler_t.__init__(self)
+    
+    def activate(self, ctx):
+        VulnScannerWindow.show_buffer_overflow()
+        return 1
+    
+    def update(self, ctx):
+        return ida_kernwin.AST_ENABLE_ALWAYS
+
+
+class FormatStringAction(ida_kernwin.action_handler_t):
+    """Action handler for showing format string window"""
+    
+    def __init__(self):
+        ida_kernwin.action_handler_t.__init__(self)
+    
+    def activate(self, ctx):
+        VulnScannerWindow.show_format_string()
+        return 1
+    
+    def update(self, ctx):
+        return ida_kernwin.AST_ENABLE_ALWAYS
+
+
+class PathTraversalAction(ida_kernwin.action_handler_t):
+    """Action handler for showing path traversal window"""
+    
+    def __init__(self):
+        ida_kernwin.action_handler_t.__init__(self)
+    
+    def activate(self, ctx):
+        VulnScannerWindow.show_path_traversal()
+        return 1
+    
+    def update(self, ctx):
+        return ida_kernwin.AST_ENABLE_ALWAYS
+
+
 # ============================================================================
 # Menu Registration
 # ============================================================================
@@ -628,6 +1087,9 @@ ACTION_DANGEROUS = "mcp:dangerous_functions"
 ACTION_CMDI = "mcp:command_injection"
 ACTION_SOURCES = "mcp:source_functions"
 ACTION_ALL = "mcp:show_all_scanners"
+ACTION_BUFFER = "mcp:buffer_overflow"
+ACTION_FORMAT = "mcp:format_string"
+ACTION_PATH = "mcp:path_traversal"
 
 
 def register_actions():
@@ -666,6 +1128,39 @@ def register_actions():
     )
     ida_kernwin.register_action(action_desc)
     
+    # Buffer overflow action
+    action_desc = ida_kernwin.action_desc_t(
+        ACTION_BUFFER,
+        "MCP: 缓冲区溢出扫描",
+        BufferOverflowAction(),
+        "Ctrl+Shift+B",
+        "扫描栈/堆缓冲区溢出漏洞",
+        -1
+    )
+    ida_kernwin.register_action(action_desc)
+    
+    # Format string action
+    action_desc = ida_kernwin.action_desc_t(
+        ACTION_FORMAT,
+        "MCP: 格式化字符串扫描",
+        FormatStringAction(),
+        "Ctrl+Shift+F",
+        "扫描格式化字符串漏洞",
+        -1
+    )
+    ida_kernwin.register_action(action_desc)
+    
+    # Path traversal action
+    action_desc = ida_kernwin.action_desc_t(
+        ACTION_PATH,
+        "MCP: 路径穿越扫描",
+        PathTraversalAction(),
+        "Ctrl+Shift+P",
+        "扫描路径穿越漏洞",
+        -1
+    )
+    ida_kernwin.register_action(action_desc)
+    
     # Show all action
     action_desc = ida_kernwin.action_desc_t(
         ACTION_ALL,
@@ -699,6 +1194,21 @@ def attach_to_menu():
     )
     ida_kernwin.attach_action_to_menu(
         "View/MCP 漏洞扫描/",
+        ACTION_BUFFER,
+        ida_kernwin.SETMENU_APP
+    )
+    ida_kernwin.attach_action_to_menu(
+        "View/MCP 漏洞扫描/",
+        ACTION_FORMAT,
+        ida_kernwin.SETMENU_APP
+    )
+    ida_kernwin.attach_action_to_menu(
+        "View/MCP 漏洞扫描/",
+        ACTION_PATH,
+        ida_kernwin.SETMENU_APP
+    )
+    ida_kernwin.attach_action_to_menu(
+        "View/MCP 漏洞扫描/",
         ACTION_ALL,
         ida_kernwin.SETMENU_APP
     )
@@ -709,6 +1219,9 @@ def unregister_actions():
     ida_kernwin.unregister_action(ACTION_DANGEROUS)
     ida_kernwin.unregister_action(ACTION_CMDI)
     ida_kernwin.unregister_action(ACTION_SOURCES)
+    ida_kernwin.unregister_action(ACTION_BUFFER)
+    ida_kernwin.unregister_action(ACTION_FORMAT)
+    ida_kernwin.unregister_action(ACTION_PATH)
     ida_kernwin.unregister_action(ACTION_ALL)
 
 
@@ -720,6 +1233,9 @@ def init_gui():
     print("  Ctrl+Shift+D - 危险函数扫描")
     print("  Ctrl+Shift+I - 命令注入扫描")
     print("  Ctrl+Shift+S - 输入源函数")
+    print("  Ctrl+Shift+B - 缓冲区溢出扫描")
+    print("  Ctrl+Shift+F - 格式化字符串扫描")
+    print("  Ctrl+Shift+P - 路径穿越扫描")
     print("  Ctrl+Shift+A - 打开所有扫描窗口")
 
 

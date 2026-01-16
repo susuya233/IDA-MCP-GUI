@@ -28,6 +28,12 @@ from . import api_python
 from . import api_resources
 from . import api_dangerous
 from . import api_taint
+from . import api_buffer
+from . import api_format_string
+from . import api_path_traversal
+from . import api_callgraph
+from . import api_struct_enum
+from . import api_llm_analysis
 from . import ida_gui
 
 # Re-export key components for external use
@@ -52,6 +58,12 @@ __all__ = [
     "api_resources",
     "api_dangerous",
     "api_taint",
+    "api_buffer",
+    "api_format_string",
+    "api_path_traversal",
+    "api_callgraph",
+    "api_struct_enum",
+    "api_llm_analysis",
     "ida_gui",
     # Re-exported components
     "idaread",
