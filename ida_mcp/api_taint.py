@@ -148,6 +148,8 @@ CONFIG_WRITE_SINKS = [
     "config_set", "cfg_set", "write_config",
     "tcapi_set", "tcapi_commit",
     "ATP_DBSetPara", "ATP_DBSaveToFlash",
+    "wlink_uci_set_value", "wlink_uci_get_value", "wlink_uci_commit",
+    "wlink_set_option", "wlink_save_config",
 ]
 
 SINK_FUNCTIONS = {
