@@ -6,11 +6,13 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
 
 ### 🛡️ 危险函数扫描
 自动检测二进制文件中对危险函数的调用：
-- **内存拷贝函数**: strcpy, strcat, sprintf, memcpy 等（缓冲区溢出风险）
-- **格式化字符串函数**: printf, syslog 等（格式化字符串漏洞）
-- **输入函数**: scanf, sscanf 等（输入验证风险）
-- **命令执行函数**: system, popen, exec* 等（命令注入风险）
-- **文件操作函数**: fopen, unlink 等（路径穿越风险）
+- **内存拷贝函数**: strcpy, strcat, sprintf, memcpy 等
+- **格式化字符串函数**: printf, syslog 等
+- **输入函数**: scanf, sscanf 等
+- **命令执行函数**: system, popen, exec* 等
+- **文件操作函数**: fopen, unlink 等
+- **CGI处理函数**: websGetVar, nvram_get, cgi_get 等
+- **认证函数**: check_auth, verify_password 等
 
 ### 💉 命令注入扫描
 基于污点分析的命令注入漏洞检测：
@@ -18,6 +20,60 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
 - 自动识别 **Sink**（危险命令执行函数）
 - 追踪数据流，生成 **利用链路径**
 - 可控性分析与风险等级评估
+
+### 🔧 缓冲区溢出分析
+- 栈缓冲区溢出检测
+- 堆缓冲区溢出检测
+- 整数溢出风险分析
+
+### 📝 格式化字符串漏洞
+- 格式化函数调用检测
+- 可控性分析
+- 利用链追踪
+
+### 📂 路径穿越分析
+- 目录穿越检测
+- 符号链接攻击
+- 竞争条件 (TOCTOU)
+- 临时文件攻击
+
+### 🔀 函数调用链可视化
+- 污点传播路径
+- Mermaid/DOT 图表生成
+- Source→Sink 路径分析
+
+### 🏗️ 自动结构/枚举建议
+- 内存访问模式分析
+- 魔数识别与枚举匹配
+- 类型修复建议
+
+### 🤖 LLM 语义分析接口
+- 函数上下文提取
+- 结构化分析提示词生成
+- 批量危险函数分析
+
+### 📱 MIPS/CGI 嵌入式设备支持
+针对路由器、IoT 设备固件的深度支持：
+
+**支持的厂商特定函数：**
+| 厂商 | 命令执行 | 输入获取 |
+|------|----------|----------|
+| D-Link | lxmldbc_system, fwSystem | cgibin_get |
+| TP-Link | tpSystem, httpRpmDoSystem | httpGetEnv, tpHttpdGetEnv |
+| Netgear | acosSystem, acosSysExec | acosNvramConfig_get |
+| ASUS | doCmd, notify_rc | tcapi_get |
+| Tenda | formSysCmd, tenda_system | websGetVar, GetValue |
+| 华为 | ATP_UTIL_ExecShell, VOS_System | ATP_DBGetPara |
+| 小米 | mi_system, miot_system | - |
+| GoAhead | websLaunchCgiProc, cgiHandler | websGetVar, ejArgs |
+| OpenWrt | luci_sys_exec, ubus_call | uci_get |
+
+**支持的输入源：**
+- NVRAM: nvram_get, nvram_safe_get, bcmGetNvram
+- UCI: uci_get, uci_get_option
+- CGI: websGetVar, cgiGetValue, httpGetParam
+- JSON: cJSON_GetObjectItem, json_get_value
+- 环境变量: QUERY_STRING, REQUEST_METHOD, HTTP_COOKIE
 
 ### 📊 双重界面
 - **Web 界面**: 现代化暗色主题，支持筛选、展开详情、复制内容
@@ -31,6 +87,9 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
 | `Ctrl+Shift+D` | 危险函数扫描窗口 |
 | `Ctrl+Shift+I` | 命令注入扫描窗口 |
 | `Ctrl+Shift+S` | 输入源函数窗口 |
+| `Ctrl+Shift+B` | 缓冲区溢出扫描 |
+| `Ctrl+Shift+F` | 格式化字符串扫描 |
+| `Ctrl+Shift+P` | 路径穿越扫描 |
 | `Ctrl+Shift+A` | 打开所有扫描窗口 |
 
 ## 安装
@@ -44,6 +103,12 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
     ├── __init__.py
     ├── api_dangerous.py
     ├── api_taint.py
+    ├── api_buffer.py
+    ├── api_format_string.py
+    ├── api_path_traversal.py
+    ├── api_callgraph.py
+    ├── api_struct_enum.py
+    ├── api_llm_analysis.py
     ├── ida_gui.py
     ├── http.py
     └── ...
@@ -59,70 +124,6 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
    - 命令注入扫描: `http://127.0.0.1:13337/cmdi.html`
 4. 或使用快捷键打开 IDA 内置窗口
 
-## 截图
-
-### 命令注入扫描 Web 界面
-```
-💉 命令注入扫描
-┌────────────────────────────────────────────────────┐
-│ 📊 统计: 发现漏洞点 12 | 严重 3 | 高危 5           │
-└────────────────────────────────────────────────────┘
-
-#1 🔴严重  system ← vulnerable_func  可控性: HIGH
-├─ 📍 调用位置: 0x8048520: call system
-├─ 🎯 可控输入源:
-│   🌍 nvram_get [Web输入] 同函数内
-└─ 🔗 利用链: nvram_get → process_cmd → system
-```
-
-### IDA 内置扫描窗口
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 命令注入扫描结果                                                  │
-├────┬──────┬──────────┬─────────────┬──────────┬──────┬────┬─────┤
-│ #  │ 风险 │ Sink函数  │ 调用函数     │ 调用地址  │可控性│源数│反汇编│
-├────┼──────┼──────────┼─────────────┼──────────┼──────┼────┼─────┤
-│ 1  │🔴严重│ system   │ vuln_func   │ 0x8048520│ 高   │ 3  │call │
-└────┴──────┴──────────┴─────────────┴──────────┴──────┴────┴─────┘
-                      [双击或按 Enter 跳转到代码位置]
-```
-
-## 检测的危险函数列表
-
-<details>
-<summary>点击展开完整列表</summary>
-
-### 内存拷贝函数
-```
-strcpy, strcat, sprintf, vsprintf, gets, strncpy, strncat, 
-snprintf, vsnprintf, memcpy, memmove, bcopy
-```
-
-### 格式化字符串函数
-```
-printf, fprintf, dprintf, syslog, vsyslog, asprintf, vasprintf
-```
-
-### 输入函数
-```
-scanf, sscanf, fscanf, vscanf, vfscanf, vsscanf
-```
-
-### 命令执行函数
-```
-system, popen, pclose, execl, execlp, execle, execv, execvp, execvpe,
-doSystem, doSystemCmd, doShell, run_cmd, cmd_exec, ExecCmd, exec_cmd,
-os_system, shell_exec
-```
-
-### 文件操作函数
-```
-open, open64, fopen, freopen, creat, unlink, remove, rename, link,
-symlink, readlink, realpath, chdir, mkdir, rmdir, tmpnam, tempnam, mktemp
-```
-
-</details>
-
 ## 许可证
 
 MIT License
@@ -130,4 +131,3 @@ MIT License
 ## 致谢
 
 - 基于 [IDA Pro MCP](https://github.com/mrexodia/ida-pro-mcp) 项目扩展开发
-
