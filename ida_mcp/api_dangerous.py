@@ -12,63 +12,103 @@ from .rpc import tool
 from .sync import idaread
 from .utils import parse_address, get_function
 
-# ============================================================================
-# Dangerous Functions List - Common vulnerable/dangerous functions
-# ============================================================================
-
-# Memory copy functions - buffer overflow risks
 MEMORY_COPY_FUNCTIONS = [
     "strcpy", "strcat", "sprintf", "vsprintf", "gets",
     "strncpy", "strncat", "snprintf", "vsnprintf",
     "memcpy", "memmove", "bcopy",
+    "wstrcpy", "lstrcpy", "lstrcpyA", "lstrcpyW",
+    "safe_strcpy",
 ]
 
-# Format string functions - format string vulnerabilities
 FORMAT_STRING_FUNCTIONS = [
     "printf", "fprintf", "dprintf", "syslog", "vsyslog",
     "asprintf", "vasprintf",
+    "log_printf", "debug_printf", "err_printf", "warn_printf",
+    "cgi_printf", "web_printf", "httpd_printf",
+    "TRACE", "DBG", "LOG", "printk",
 ]
 
-# Input functions - input validation risks
 INPUT_FUNCTIONS = [
     "scanf", "sscanf", "fscanf", "vscanf", "vfscanf", "vsscanf",
+    "cgi_input_parse", "parse_query", "decode_uri",
 ]
 
-# Command execution - command injection risks
 COMMAND_EXEC_FUNCTIONS = [
     "system", "popen", "pclose",
     "execl", "execlp", "execle", "execv", "execvp", "execvpe",
-    "doSystem", "doSystemCmd", "doShell",
-    "run_cmd", "cmd_exec", "ExecCmd", "exec_cmd",
-    "os_system", "shell_exec",
+    
+    "doSystem", "doSystemCmd", "doShell", "do_system",
+    "run_cmd", "cmd_exec", "ExecCmd", "exec_cmd", "runcmd",
+    "os_system", "shell_exec", "twsystem", "CsteSystem",
+    
+    "lxmldbc_system", "tpSystem", "acosSystem", "mi_system",
+    "tenda_system", "ATP_UTIL_ExecShell", "VOS_System",
+    "formSysCmd", "execCommand", "fwSystem",
+    "websLaunchCgiProc", "cgiHandler",
+    
+    "debug_cmd", "test_cmd", "hidden_cmd", "backdoor",
 ]
 
-# File operations - path traversal risks
 FILE_OPERATION_FUNCTIONS = [
     "open", "open64", "fopen", "freopen", "creat",
     "unlink", "remove", "rename", "link", "symlink",
     "readlink", "realpath", "chdir", "mkdir", "rmdir",
     "tmpnam", "tempnam", "mktemp",
+    "flash_write", "mtd_write", "firmware_upgrade",
 ]
 
-# All dangerous functions grouped by category
+CGI_HANDLER_FUNCTIONS = [
+    "websGetVar", "websSetVar", "websRedirect", "websWrite",
+    "websFormDefine", "websUrlHandlerDefine",
+    "ejSetResult", "ejArgs", "ejGetResult",
+    
+    "cgi_get", "cgi_param", "get_param", "cgiGetValue",
+    "cgi_printf", "cgi_write", "cgi_redirect",
+    "httpGetEnv", "httpGetParam", "http_get_env",
+    
+    "nvram_get", "nvram_set", "nvram_safe_get", "nvram_commit",
+    "acosNvramConfig_get", "acosNvramConfig_set",
+    
+    "uci_get", "uci_set", "uci_commit",
+]
+
+AUTH_FUNCTIONS = [
+    "check_auth", "verify_password", "authenticate",
+    "login_check", "session_check", "is_authenticated",
+    "check_login", "verify_login", "passwd_check",
+    "httpd_auth", "cgi_auth", "web_auth",
+    "strcmp", "strncmp", "memcmp",
+]
+
+NETWORK_FUNCTIONS = [
+    "socket", "connect", "bind", "listen", "accept",
+    "send", "recv", "sendto", "recvfrom",
+    "raw_socket", "packet_socket",
+    "httpd_start", "start_httpd", "mini_httpd",
+    "telnetd", "start_telnet", "dropbear",
+]
+
 DANGEROUS_FUNCTIONS = {
     "memory_copy": MEMORY_COPY_FUNCTIONS,
     "format_string": FORMAT_STRING_FUNCTIONS,
     "input": INPUT_FUNCTIONS,
     "command_exec": COMMAND_EXEC_FUNCTIONS,
     "file_operation": FILE_OPERATION_FUNCTIONS,
+    "cgi_handler": CGI_HANDLER_FUNCTIONS,
+    "auth": AUTH_FUNCTIONS,
+    "network": NETWORK_FUNCTIONS,
 }
 
-# Flat list of all dangerous function names
 ALL_DANGEROUS_FUNCTIONS = (
     MEMORY_COPY_FUNCTIONS +
     FORMAT_STRING_FUNCTIONS +
     INPUT_FUNCTIONS +
     COMMAND_EXEC_FUNCTIONS +
-    FILE_OPERATION_FUNCTIONS
+    FILE_OPERATION_FUNCTIONS +
+    CGI_HANDLER_FUNCTIONS +
+    AUTH_FUNCTIONS +
+    NETWORK_FUNCTIONS
 )
-
 
 class DangerousFunctionCall(TypedDict):
     """Represents a call to a dangerous function"""
@@ -79,7 +119,6 @@ class DangerousFunctionCall(TypedDict):
     caller_name: Optional[str]
     caller_func_addr: Optional[str]
 
-
 class DangerousFunctionInfo(TypedDict):
     """Information about a dangerous function and its callers"""
     name: str
@@ -88,12 +127,6 @@ class DangerousFunctionInfo(TypedDict):
     call_count: int
     callers: list[dict]
 
-
-# ============================================================================
-# API Functions
-# ============================================================================
-
-
 def _get_function_category(func_name: str) -> str:
     """Get the category of a dangerous function"""
     for category, funcs in DANGEROUS_FUNCTIONS.items():
@@ -101,25 +134,20 @@ def _get_function_category(func_name: str) -> str:
             return category
     return "unknown"
 
-
 def _find_dangerous_function_address(func_name: str) -> Optional[int]:
     """Find the address of a dangerous function by name"""
-    # Try exact name match first
     ea = ida_name.get_name_ea(idaapi.BADADDR, func_name)
     if ea != idaapi.BADADDR:
         return ea
     
-    # Try with underscore prefix (common in some binaries)
     ea = ida_name.get_name_ea(idaapi.BADADDR, f"_{func_name}")
     if ea != idaapi.BADADDR:
         return ea
     
-    # Try with double underscore prefix
     ea = ida_name.get_name_ea(idaapi.BADADDR, f"__{func_name}")
     if ea != idaapi.BADADDR:
         return ea
     
-    # Search in imports
     import ida_nalt
     nimps = ida_nalt.get_import_module_qty()
     for i in range(nimps):
@@ -135,7 +163,7 @@ def _find_dangerous_function_address(func_name: str) -> Optional[int]:
             check_result = check_import(ea, name, ordinal)
             if check_result != True:
                 result.append(check_result)
-                return False  # Stop enumeration
+                return False
             return True
         
         ida_nalt.enum_import_names(i, callback)
@@ -144,13 +172,11 @@ def _find_dangerous_function_address(func_name: str) -> Optional[int]:
     
     return None
 
-
 def _get_callers_of_function(func_addr: int) -> list[dict]:
     """Get all callers of a function"""
     callers = []
     
     for xref in idautils.XrefsTo(func_addr, 0):
-        # Only consider code references (calls)
         if not xref.iscode:
             continue
         
@@ -168,7 +194,6 @@ def _get_callers_of_function(func_addr: int) -> list[dict]:
             caller_info["caller_func_name"] = func_name
             caller_info["caller_func_addr"] = hex(caller_func.start_ea)
         
-        # Get the disassembly line at the call site
         disasm = idc.generate_disasm_line(caller_addr, 0)
         if disasm:
             import ida_lines
@@ -177,7 +202,6 @@ def _get_callers_of_function(func_addr: int) -> list[dict]:
         callers.append(caller_info)
     
     return callers
-
 
 @tool
 @idaread
@@ -198,7 +222,6 @@ def find_dangerous_calls(
     """
     results = []
     
-    # Determine which functions to search for
     if categories:
         func_names_to_search = []
         for cat in categories:
@@ -207,7 +230,6 @@ def find_dangerous_calls(
     else:
         func_names_to_search = ALL_DANGEROUS_FUNCTIONS
     
-    # Search for each dangerous function
     for func_name in func_names_to_search:
         func_addr = _find_dangerous_function_address(func_name)
         if func_addr is None:
@@ -227,11 +249,9 @@ def find_dangerous_calls(
             callers=callers,
         ))
     
-    # Sort by call count (most called first)
     results.sort(key=lambda x: x["call_count"], reverse=True)
     
     return results
-
 
 @tool
 @idaread
@@ -241,7 +261,6 @@ def get_dangerous_function_categories() -> dict:
         "categories": DANGEROUS_FUNCTIONS,
         "total_functions": len(ALL_DANGEROUS_FUNCTIONS),
     }
-
 
 @tool
 @idaread
@@ -263,4 +282,3 @@ def analyze_dangerous_function(
         call_count=len(callers),
         callers=callers,
     )
-

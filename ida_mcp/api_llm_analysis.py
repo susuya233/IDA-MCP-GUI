@@ -20,11 +20,6 @@ import json
 from .rpc import tool
 from .sync import idaread
 
-# ============================================================================
-# Context Extraction for LLM Analysis
-# ============================================================================
-
-
 class FunctionContext(TypedDict):
     """Complete context for a function for LLM analysis"""
     name: str
@@ -42,7 +37,6 @@ class FunctionContext(TypedDict):
     xrefs_from: int
     characteristics: dict
 
-
 class VulnerabilityContext(TypedDict):
     """Context for vulnerability analysis"""
     function_context: FunctionContext
@@ -52,7 +46,6 @@ class VulnerabilityContext(TypedDict):
     static_analysis_results: dict
     llm_prompt: str
 
-
 class SemanticAnalysisResult(TypedDict):
     """Result of semantic analysis"""
     function_name: str
@@ -61,12 +54,6 @@ class SemanticAnalysisResult(TypedDict):
     code_quality: dict
     suggestions: list[str]
     confidence: str
-
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
 
 def _get_function_strings(func_addr: int) -> list[str]:
     """Get all strings referenced by a function"""
@@ -88,7 +75,6 @@ def _get_function_strings(func_addr: int) -> list[str]:
     
     return list(set(strings))
 
-
 def _get_function_imports(func_addr: int) -> list[str]:
     """Get all imported functions called by a function"""
     imports = []
@@ -100,13 +86,11 @@ def _get_function_imports(func_addr: int) -> list[str]:
         for xref in idautils.CodeRefsFrom(ea, 0):
             name = ida_name.get_name(xref)
             if name:
-                # Check if it's an import
                 seg = ida_segment.getseg(xref)
                 if seg and "extern" in ida_segment.get_segm_name(seg).lower():
                     imports.append(name)
     
     return list(set(imports))
-
 
 def _analyze_code_patterns(pseudocode: str) -> list[dict]:
     """Analyze code for common vulnerability patterns"""
@@ -114,7 +98,6 @@ def _analyze_code_patterns(pseudocode: str) -> list[dict]:
     
     patterns = []
     
-    # Dangerous function patterns
     dangerous_funcs = [
         (r'\bstrcpy\s*\(', "buffer_overflow", "使用 strcpy 可能导致缓冲区溢出"),
         (r'\bsprintf\s*\(', "buffer_overflow", "使用 sprintf 可能导致缓冲区溢出"),
@@ -125,6 +108,40 @@ def _analyze_code_patterns(pseudocode: str) -> list[dict]:
         (r'\bfopen\s*\([^,]+,\s*"w', "file_operation", "文件写入操作，检查路径是否可控"),
         (r'\bunlink\s*\(', "file_operation", "文件删除操作，检查路径是否可控"),
         (r'\bprintf\s*\([^,\)]+\)', "format_string", "printf 第一个参数不是常量，可能存在格式化字符串漏洞"),
+        
+        (r'\bdoSystem\s*\(', "command_injection", "【嵌入式】doSystem 命令执行，检查参数是否可控"),
+        (r'\bdoSystemCmd\s*\(', "command_injection", "【嵌入式】doSystemCmd 命令执行"),
+        (r'\btwsystem\s*\(', "command_injection", "【嵌入式】twsystem 命令执行"),
+        (r'\bCsteSystem\s*\(', "command_injection", "【嵌入式】CsteSystem 命令执行"),
+        (r'\blxmldbc_system\s*\(', "command_injection", "【D-Link】lxmldbc_system 命令执行"),
+        (r'\btpSystem\s*\(', "command_injection", "【TP-Link】tpSystem 命令执行"),
+        (r'\bacosSystem\s*\(', "command_injection", "【Netgear】acosSystem 命令执行"),
+        (r'\bformSysCmd\s*\(', "command_injection", "【Tenda】formSysCmd 命令执行"),
+        (r'\bATP_UTIL_ExecShell\s*\(', "command_injection", "【华为】ATP_UTIL_ExecShell 命令执行"),
+        (r'\bVOS_System\s*\(', "command_injection", "【华为】VOS_System 命令执行"),
+        (r'\bwebsLaunchCgiProc\s*\(', "command_injection", "【GoAhead】CGI 进程启动"),
+        
+        (r'\bwebsGetVar\s*\(', "cgi_input", "【GoAhead】websGetVar 获取用户输入，检查使用方式"),
+        (r'\bnvram_get\s*\(', "config_read", "【NVRAM】nvram_get 读取配置，可能包含用户可控数据"),
+        (r'\bnvram_safe_get\s*\(', "config_read", "【NVRAM】nvram_safe_get 配置读取"),
+        (r'\buci_get\s*\(', "config_read", "【OpenWrt】uci_get 配置读取"),
+        (r'\bgetenv\s*\(["\']?(QUERY_STRING|REQUEST|HTTP_|CONTENT_)', "cgi_input", "【CGI】环境变量获取，用户可控"),
+        (r'\bcgi_get\s*\(', "cgi_input", "【CGI】cgi_get 参数获取"),
+        (r'\bhttpGetEnv\s*\(', "cgi_input", "【CGI】httpGetEnv 环境变量获取"),
+        
+        (r'sprintf\s*\([^;]+;[^}]*system\s*\(', "command_injection_chain", "【高危】sprintf 构造后执行 system，典型命令注入模式"),
+        (r'sprintf\s*\([^;]+;[^}]*popen\s*\(', "command_injection_chain", "【高危】sprintf 构造后执行 popen"),
+        (r'sprintf\s*\([^;]+;[^}]*doSystem\s*\(', "command_injection_chain", "【高危】sprintf 构造后执行 doSystem"),
+        
+        (r'strcmp\s*\([^,]+,\s*["\'][^"\']+["\']\s*\)\s*==\s*0', "hardcoded_credential", "【认证】硬编码密码比较，可能存在后门"),
+        (r'strncmp\s*\([^,]+,\s*["\'][^"\']+["\']\s*,', "hardcoded_credential", "【认证】硬编码字符串比较"),
+        
+        (r'\bnvram_set\s*\(', "config_write", "【NVRAM】nvram_set 配置写入，检查是否可被滥用"),
+        (r'\bnvram_commit\s*\(', "config_write", "【NVRAM】nvram_commit 配置提交"),
+        
+        (r'\bfirmware_upgrade\s*\(', "firmware_mod", "【高危】固件升级函数，检查认证"),
+        (r'\bflash_write\s*\(', "firmware_mod", "【高危】Flash 写入，检查权限"),
+        (r'\bmtd_write\s*\(', "firmware_mod", "【高危】MTD 写入操作"),
     ]
     
     for pattern, vuln_type, desc in dangerous_funcs:
@@ -137,12 +154,15 @@ def _analyze_code_patterns(pseudocode: str) -> list[dict]:
                 "position": match.start(),
             })
     
-    # Logic patterns
     logic_patterns = [
         (r'if\s*\([^)]*==\s*0\s*\)[^{]*return', "error_handling", "返回值检查模式"),
         (r'while\s*\(\s*1\s*\)', "infinite_loop", "无限循环"),
         (r'for\s*\([^;]*;\s*;\s*[^)]*\)', "infinite_loop", "可能的无限循环"),
         (r'malloc\s*\([^)]+\)\s*;[^}]*(?!if|while)', "missing_null_check", "malloc 后可能缺少 NULL 检查"),
+        
+        (r'websGetVar[^;]*;[^}]*sprintf[^;]*;[^}]*system', "cgi_cmdi_pattern", "【CGI漏洞链】websGetVar->sprintf->system 典型命令注入"),
+        (r'nvram_get[^;]*;[^}]*sprintf[^;]*;[^}]*system', "nvram_cmdi_pattern", "【NVRAM漏洞链】nvram_get->sprintf->system"),
+        (r'getenv[^;]*;[^}]*sprintf[^;]*;[^}]*system', "env_cmdi_pattern", "【环境变量漏洞链】getenv->sprintf->system"),
     ]
     
     for pattern, pattern_type, desc in logic_patterns:
@@ -153,7 +173,6 @@ def _analyze_code_patterns(pseudocode: str) -> list[dict]:
             })
     
     return patterns
-
 
 def _generate_analysis_prompt(context: FunctionContext, analysis_type: str = "security") -> str:
     """Generate a prompt for LLM analysis"""
@@ -231,12 +250,6 @@ def _generate_analysis_prompt(context: FunctionContext, analysis_type: str = "se
     
     return prompt
 
-
-# ============================================================================
-# API Functions
-# ============================================================================
-
-
 @tool
 @idaread
 def get_function_context(
@@ -264,7 +277,6 @@ def get_function_context(
     
     func_name = ida_funcs.get_func_name(func.start_ea)
     
-    # Get pseudocode
     pseudocode = ""
     local_vars = []
     try:
@@ -279,7 +291,6 @@ def get_function_context(
                 lines.append(ida_lines.tag_remove(sl.line))
             pseudocode = "\n".join(lines)
             
-            # Get local variables
             lvars = cfunc.get_lvars()
             for lvar in lvars:
                 local_vars.append({
@@ -290,7 +301,6 @@ def get_function_context(
     except:
         pass
     
-    # Get disassembly if requested
     disasm = ""
     if include_disasm:
         disasm_lines = []
@@ -303,7 +313,6 @@ def get_function_context(
                 break
         disasm = "\n".join(disasm_lines)
     
-    # Get callers
     callers = []
     for xref in idautils.XrefsTo(func.start_ea, 0):
         if xref.iscode:
@@ -315,7 +324,6 @@ def get_function_context(
                     "call_site": hex(xref.frm),
                 })
     
-    # Get callees
     callees = []
     seen_callees = set()
     for ea in idautils.FuncItems(func.start_ea):
@@ -328,14 +336,11 @@ def get_function_context(
                     "addr": hex(callee_func.start_ea),
                 })
     
-    # Get strings and imports
     strings = _get_function_strings(func.start_ea)
     imports = _get_function_imports(func.start_ea)
     
-    # Analyze patterns
     patterns = _analyze_code_patterns(pseudocode) if pseudocode else []
     
-    # Function signature
     func_type = idc.get_type(func.start_ea) or "unknown"
     
     return FunctionContext(
@@ -362,7 +367,6 @@ def get_function_context(
         },
     )
 
-
 @tool
 @idaread
 def get_vulnerability_context(
@@ -381,16 +385,14 @@ def get_vulnerability_context(
     if "error" in context:
         return {"error": context["error"]}
     
-    # Analyze dangerous patterns
     patterns = context.get("characteristics", {}).get("patterns", [])
     
-    # Generate LLM prompt
     prompt = _generate_analysis_prompt(context, "vulnerability")
     
     return VulnerabilityContext(
         function_context=context,
         dangerous_patterns=patterns,
-        data_flow=[],  # Could be enhanced with more sophisticated analysis
+        data_flow=[],
         similar_vulnerabilities=[],
         static_analysis_results={
             "pattern_count": len(patterns),
@@ -398,7 +400,6 @@ def get_vulnerability_context(
         },
         llm_prompt=prompt,
     )
-
 
 @tool
 @idaread
@@ -430,7 +431,6 @@ def generate_analysis_prompt(
         },
     }
 
-
 @tool
 @idaread
 def batch_analyze_functions(
@@ -446,16 +446,13 @@ def batch_analyze_functions(
     
     results = []
     
-    # Get all functions
     all_funcs = list(idautils.Functions())
     
-    # Filter based on focus
     interesting_funcs = []
     
     for func_ea in all_funcs:
         func_name = ida_funcs.get_func_name(func_ea)
         
-        # Apply name filter if provided
         if func_filter and not re.search(func_filter, func_name, re.IGNORECASE):
             continue
         
@@ -466,7 +463,6 @@ def batch_analyze_functions(
         score = 0
         
         if focus_on == "dangerous_calls":
-            # Check if function contains dangerous calls
             try:
                 cfunc = ida_hexrays.decompile(func_ea)
                 if cfunc:
@@ -477,22 +473,18 @@ def batch_analyze_functions(
                 pass
         
         elif focus_on == "entry_points":
-            # Functions with many callers from outside
             xref_count = sum(1 for _ in idautils.XrefsTo(func_ea, 0))
             score = xref_count
         
         elif focus_on == "large_functions":
-            # Large functions might be complex and error-prone
             score = func.size()
         
         if score > 0:
             interesting_funcs.append((func_ea, func_name, score))
     
-    # Sort by score and take top N
     interesting_funcs.sort(key=lambda x: x[2], reverse=True)
     interesting_funcs = interesting_funcs[:max_functions]
     
-    # Get context for each
     for func_ea, func_name, score in interesting_funcs:
         context = get_function_context(hex(func_ea))
         if "error" not in context:
@@ -510,7 +502,6 @@ def batch_analyze_functions(
     
     return results
 
-
 @tool
 @idaread
 def get_binary_overview() -> dict:
@@ -522,13 +513,10 @@ def get_binary_overview() -> dict:
     - Import/export information
     - Interesting patterns
     """
-    # Get basic info
     info = idaapi.get_inf_structure()
     
-    # Count functions
     func_count = sum(1 for _ in idautils.Functions())
     
-    # Get segments
     segments = []
     seg = ida_segment.get_first_seg()
     while seg:
@@ -540,7 +528,6 @@ def get_binary_overview() -> dict:
         })
         seg = ida_segment.get_next_seg(seg.end_ea)
     
-    # Get imports
     imports = []
     nimps = ida_nalt.get_import_module_qty()
     for i in range(nimps):
@@ -557,10 +544,9 @@ def get_binary_overview() -> dict:
         imports.append({
             "module": module_name,
             "count": len(import_list),
-            "functions": import_list[:20],  # Limit
+            "functions": import_list[:20],
         })
     
-    # Find interesting functions
     dangerous_func_names = ["system", "popen", "strcpy", "sprintf", "gets", "exec"]
     found_dangerous = []
     for func_ea in idautils.Functions():
@@ -587,7 +573,6 @@ def get_binary_overview() -> dict:
         ],
     }
 
-
 @tool
 @idaread
 def get_code_snippet(
@@ -610,12 +595,11 @@ def get_code_snippet(
         except:
             return {"error": f"Invalid end address: {end_addr}"}
     else:
-        # Get function end
         func = idaapi.get_func(start)
         if func:
             end = func.end_ea
         else:
-            end = start + 0x100  # Default range
+            end = start + 0x100
     
     result = {
         "start": hex(start),
@@ -649,4 +633,3 @@ def get_code_snippet(
         result["disassembly"] = "\n".join(disasm_lines)
     
     return result
-

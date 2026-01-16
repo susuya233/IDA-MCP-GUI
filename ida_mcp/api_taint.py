@@ -13,94 +13,151 @@ import ida_lines
 from .rpc import tool
 from .sync import idaread
 
-# ============================================================================
-# Source Functions - User controllable input points
-# ============================================================================
-
-# Network input sources
 NETWORK_SOURCES = [
     "recv", "recvfrom", "recvmsg", "read", "readv", "pread", "pread64",
     "fread", "fgets", "getline", "getdelim",
     "socket", "accept", "accept4",
     "recv_data", "receive_data", "net_recv",
+    "httpd_read", "http_read", "websRead", "websReadData",
+    "httpRead", "httpGetData", "tcpRead", "udpRead",
 ]
 
-# User input sources
 USER_INPUT_SOURCES = [
     "gets", "scanf", "sscanf", "fscanf", "vscanf", "vfscanf", "vsscanf",
     "getchar", "fgetc", "getc", "getc_unlocked", "fgetc_unlocked",
     "getenv", "secure_getenv", "getenv_s",
-    "argv",  # command line arguments
+    "argv",
 ]
 
-# File input sources
 FILE_INPUT_SOURCES = [
     "fopen", "freopen", "open", "open64", "openat",
     "mmap", "mmap64",
     "readlink", "realpath",
+    "fopen_config", "read_config", "load_config",
 ]
 
-# Web/CGI input sources
 WEB_INPUT_SOURCES = [
-    "getenv",  # CGI环境变量
+    "getenv",
     "QUERY_STRING", "REQUEST_METHOD", "CONTENT_TYPE", "CONTENT_LENGTH",
-    "HTTP_COOKIE", "HTTP_USER_AGENT", "HTTP_REFERER",
+    "HTTP_COOKIE", "HTTP_USER_AGENT", "HTTP_REFERER", "REMOTE_ADDR",
+    "REQUEST_URI", "SCRIPT_NAME", "PATH_INFO", "SERVER_NAME",
     "cgi_get", "cgi_param", "get_param", "get_query",
-    "web_get", "http_get_param", "nvram_get", "nvram_safe_get",
-    "uci_get", "config_get", "GetValue", "getValue",
+    "web_get", "http_get_param", "cgiGetValue", "cgiGetVariable",
+    "cgi_input_parse", "cgi_get_val", "cgi_getvar",
+    "websGetVar", "websGetVarStr", "websGetVarInt",
+    "httpGetEnv", "httpGetParam", "http_get_env",
+    "nvram_get", "nvram_safe_get", "nvram_bufget", "nvram_get_int",
+    "nvram_match", "nvram_invmatch", "nvram_get_r", "acosNvramConfig_get",
+    "bcmGetNvram", "bcm_nvram_get", "Nvram_Get", "NvramGet",
+    "uci_get", "uci_get_option", "uci_lookup_option", "uci_get_string",
+    "config_get", "GetValue", "getValue", "getValueByName",
+    "cfg_get", "cfgGet", "get_config", "read_value",
+    "sysconfig_get", "sys_get_value", "get_option",
+    "get_cgi", "cgibin_parse", "cgibin_get", "FCGI_Get",
+    "httpRpmConfGet", "tpHttpdGetEnv",
+    "agApi_fwGetFirst",
+    "tcapi_get", "tcapi_staticGet", "nvram_safe_get_r",
+    "cgiGetValueByName",
+    "ATP_DBGetPara", "ATP_DBGetParaStr", "DB_GetValue",
+    "websGetVarSafe", "websGetFormVar",
+    "ejGetResult", "ejArgs", "ejSetResult",
+    "find_ivalue", "find_value", "unescape", "decodeUrl",
+    "json_get", "json_object_get", "cJSON_GetObjectItem",
+    "json_get_string", "json_get_value", "jsonGetValue",
 ]
 
-# All source functions
+EMBEDDED_SOURCES = [
+    "serial_read", "uart_read", "console_read",
+    "shm_read", "shared_mem_get", "ipc_recv",
+    "msgrcv", "mq_receive",
+    "flash_read", "eeprom_read", "mtd_read",
+]
+
 SOURCE_FUNCTIONS = {
     "network": NETWORK_SOURCES,
     "user_input": USER_INPUT_SOURCES,
     "file_input": FILE_INPUT_SOURCES,
     "web_input": WEB_INPUT_SOURCES,
+    "embedded": EMBEDDED_SOURCES,
 }
 
-ALL_SOURCES = NETWORK_SOURCES + USER_INPUT_SOURCES + FILE_INPUT_SOURCES + WEB_INPUT_SOURCES
+ALL_SOURCES = NETWORK_SOURCES + USER_INPUT_SOURCES + FILE_INPUT_SOURCES + WEB_INPUT_SOURCES + EMBEDDED_SOURCES
 
-# ============================================================================
-# Sink Functions - Command injection points
-# ============================================================================
-
-# Direct command execution
 COMMAND_EXEC_SINKS = [
     "system", "popen", "pclose",
     "execl", "execlp", "execle", "execv", "execvp", "execvpe",
     "execve", "fexecve",
-    "doSystem", "doSystemCmd", "doShell", "do_system",
+    
+    "doSystem", "doSystemCmd", "doShell", "do_system", "dosystem",
     "run_cmd", "cmd_exec", "ExecCmd", "exec_cmd", "runcmd",
     "os_system", "shell_exec", "run_command", "execute_cmd",
     "twsystem", "CsteSystem", "cgi_deal_popen",
     "ExecShell", "RunShell", "shell", "Shell",
-    # Busybox/embedded specific
-    "bb_system", "run_shell_cmd", "exec_shell",
+    
+    "bb_system", "run_shell_cmd", "exec_shell", "xsystem",
+    "spawn_shell", "start_shell", "launch_shell",
+    
+    "lxmldbc_system", "xmldbc_sys", "apmib_set_system",
+    "cgibin_exec", "cgi_exec_cmd", "sendcmd", "fwSystem",
+    
+    "tpSystem", "tp_system", "httpd_system", "httpRpmDoSystem",
+    "oal_sys_exec", "oal_doShell", "tpHttpdCgiCmd",
+    
+    "acosSystem", "acosSysExec", "system_ex", "RunCmd",
+    "mini_system", "exec_system", "fw_system",
+    
+    "eval", "doCmd", "notify_rc", "kill_pidfile_s",
+    "start_script", "run_custom_script", "sys_script",
+    
+    "tenda_system", "tpi_system", "tenda_exec", "tpiShell",
+    "formSysCmd", "formDefineTendaCmd", "execCommand",
+    
+    "ATP_UTIL_ExecShell", "VOS_System", "ATP_UTIL_ForkExecv",
+    "ATP_DBSaveParaToFlash", "HW_ExecCmd",
+    
+    "websFormDefine", "websUrlHandlerDefine", "websLaunchCgiProc",
+    "cgiHandler", "ejEval", "ejEvalFile",
+    
+    "mi_system", "miot_system", "luci_exec",
+    
+    "luci_sys_exec", "ubus_call", "opkg_exec",
+    
+    "fork_exec", "vfork_exec", "spawn", "posix_spawn",
+    "sh_exec", "bash_exec", "ash_exec", "busybox_exec",
+    
+    "debug_cmd", "debug_system", "test_cmd", "backdoor",
+    "hidden_cmd", "admin_exec", "root_exec", "service_exec",
 ]
 
-# Eval-like functions
 EVAL_SINKS = [
     "eval", "dlopen", "dlsym",
+    "luaL_dostring", "luaL_loadstring", "lua_pcall",
+    "js_eval", "duktape_eval", "jerryscript_eval",
 ]
 
-# SQL injection sinks (bonus)
 SQL_SINKS = [
     "sqlite3_exec", "mysql_query", "mysql_real_query",
     "PQexec", "PQexecParams",
     "sql_exec", "db_query", "execute_sql",
+    "sqlite_exec", "db_execute", "nvram_sql",
+]
+
+CONFIG_WRITE_SINKS = [
+    "nvram_set", "nvram_commit", "nvram_bufset",
+    "uci_set", "uci_commit", "uci_save",
+    "config_set", "cfg_set", "write_config",
+    "tcapi_set", "tcapi_commit",
+    "ATP_DBSetPara", "ATP_DBSaveToFlash",
 ]
 
 SINK_FUNCTIONS = {
     "command_exec": COMMAND_EXEC_SINKS,
     "eval": EVAL_SINKS,
     "sql": SQL_SINKS,
+    "config_write": CONFIG_WRITE_SINKS,
 }
 
-ALL_SINKS = COMMAND_EXEC_SINKS + EVAL_SINKS + SQL_SINKS
-
-# ============================================================================
-# Propagation Functions - Data flow propagators
-# ============================================================================
+ALL_SINKS = COMMAND_EXEC_SINKS + EVAL_SINKS + SQL_SINKS + CONFIG_WRITE_SINKS
 
 STRING_PROPAGATORS = [
     "strcpy", "strncpy", "strcat", "strncat",
@@ -109,11 +166,6 @@ STRING_PROPAGATORS = [
     "strdup", "strndup",
 ]
 
-# ============================================================================
-# Type Definitions
-# ============================================================================
-
-
 class SourceInfo(TypedDict):
     """Information about a source function"""
     name: str
@@ -121,14 +173,12 @@ class SourceInfo(TypedDict):
     category: str
     callers: list[dict]
 
-
 class SinkInfo(TypedDict):
     """Information about a sink function"""
     name: str
     addr: str
     category: str
     callers: list[dict]
-
 
 class TaintPath(TypedDict):
     """A taint propagation path from source to sink"""
@@ -138,11 +188,10 @@ class TaintPath(TypedDict):
     sink_func: str
     sink_addr: str
     sink_category: str
-    path: list[dict]  # List of functions in the path
+    path: list[dict]
     path_length: int
-    controllability: str  # high, medium, low, unknown
-    risk_level: str  # critical, high, medium, low
-
+    controllability: str
+    risk_level: str
 
 class VulnerabilityInfo(TypedDict):
     """Command injection vulnerability information"""
@@ -158,30 +207,20 @@ class VulnerabilityInfo(TypedDict):
     risk_level: str
     exploit_paths: list[TaintPath]
 
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-
 def _find_function_address(func_name: str) -> Optional[int]:
     """Find the address of a function by name"""
-    # Try exact name match first
     ea = ida_name.get_name_ea(idaapi.BADADDR, func_name)
     if ea != idaapi.BADADDR:
         return ea
     
-    # Try with underscore prefix
     ea = ida_name.get_name_ea(idaapi.BADADDR, f"_{func_name}")
     if ea != idaapi.BADADDR:
         return ea
     
-    # Try with double underscore
     ea = ida_name.get_name_ea(idaapi.BADADDR, f"__{func_name}")
     if ea != idaapi.BADADDR:
         return ea
     
-    # Search in imports
     import ida_nalt
     nimps = ida_nalt.get_import_module_qty()
     for i in range(nimps):
@@ -200,7 +239,6 @@ def _find_function_address(func_name: str) -> Optional[int]:
             return result[0]
     
     return None
-
 
 def _get_callers_of_function(func_addr: int) -> list[dict]:
     """Get all callers of a function with detailed info"""
@@ -233,7 +271,6 @@ def _get_callers_of_function(func_addr: int) -> list[dict]:
     
     return callers
 
-
 def _get_function_callees(func_addr: int) -> list[tuple[int, str]]:
     """Get all functions called by the specified function"""
     func = idaapi.get_func(func_addr)
@@ -249,7 +286,6 @@ def _get_function_callees(func_addr: int) -> list[tuple[int, str]]:
     
     return list(set(callees))
 
-
 def _get_function_callers(func_addr: int) -> list[tuple[int, str]]:
     """Get all functions that call the specified function"""
     callers = []
@@ -263,28 +299,23 @@ def _get_function_callers(func_addr: int) -> list[tuple[int, str]]:
     
     return list(set(callers))
 
-
 def _find_paths_between_functions(source_addr: int, sink_addr: int, max_depth: int = 10) -> list[list[dict]]:
     """Find call paths from source to sink using BFS"""
     paths = []
     
-    # BFS to find paths
     queue = deque()
-    # (current_addr, path_so_far, visited)
     queue.append((source_addr, [{"addr": hex(source_addr), "name": ida_funcs.get_func_name(source_addr)}], {source_addr}))
     
-    while queue and len(paths) < 20:  # Limit paths found
+    while queue and len(paths) < 20:
         current_addr, path, visited = queue.popleft()
         
         if len(path) > max_depth:
             continue
         
-        # Get callees of current function
         callees = _get_function_callees(current_addr)
         
         for callee_addr, callee_name in callees:
             if callee_addr == sink_addr:
-                # Found a path to sink
                 final_path = path + [{"addr": hex(callee_addr), "name": callee_name}]
                 paths.append(final_path)
             elif callee_addr not in visited:
@@ -293,7 +324,6 @@ def _find_paths_between_functions(source_addr: int, sink_addr: int, max_depth: i
                 queue.append((callee_addr, new_path, new_visited))
     
     return paths
-
 
 def _analyze_controllability(caller_func_addr: int, sink_name: str) -> str:
     """Analyze if the sink's arguments are controllable"""
@@ -304,9 +334,7 @@ def _analyze_controllability(caller_func_addr: int, sink_name: str) -> str:
         
         pseudocode = str(cfunc)
         
-        # Check for direct source -> sink patterns
         dangerous_patterns = [
-            # Direct user input to command
             f"{sink_name}(getenv",
             f"{sink_name}(argv",
             f"{sink_name}(buf",
@@ -317,7 +345,6 @@ def _analyze_controllability(caller_func_addr: int, sink_name: str) -> str:
             f"{sink_name}(param",
             f"{sink_name}(query",
             f"{sink_name}(request",
-            # sprintf then system
             "sprintf", "snprintf",
         ]
         
@@ -338,7 +365,6 @@ def _analyze_controllability(caller_func_addr: int, sink_name: str) -> str:
             return "low"
     except:
         return "unknown"
-
 
 def _determine_risk_level(controllability: str, sink_category: str) -> str:
     """Determine overall risk level"""
@@ -362,12 +388,6 @@ def _determine_risk_level(controllability: str, sink_category: str) -> str:
         else:
             return "medium"
 
-
-# ============================================================================
-# API Functions
-# ============================================================================
-
-
 @tool
 @idaread
 def scan_command_injection(
@@ -384,14 +404,12 @@ def scan_command_injection(
     vulnerabilities = []
     vuln_id = 0
     
-    # Find all sink functions
     for sink_category, sink_list in SINK_FUNCTIONS.items():
         for sink_name in sink_list:
             sink_addr = _find_function_address(sink_name)
             if sink_addr is None:
                 continue
             
-            # Get all callers of this sink
             callers = _get_callers_of_function(sink_addr)
             
             for caller in callers:
@@ -403,18 +421,15 @@ def scan_command_injection(
                 
                 vuln_id += 1
                 
-                # Analyze controllability
                 controllability = _analyze_controllability(
                     int(caller_func_addr, 16), sink_name
                 )
                 
-                # Find source -> caller paths
                 sources_found = []
                 exploit_paths = []
                 
                 caller_addr_int = int(caller_func_addr, 16)
                 
-                # Check what functions the caller calls (potential sources in the same function)
                 caller_callees = _get_function_callees(caller_addr_int)
                 for callee_addr, callee_name in caller_callees:
                     clean_name = callee_name.lstrip("_").lower()
@@ -428,9 +443,8 @@ def scan_command_injection(
                                 "location": "same_function",
                             })
                 
-                # Trace callers of the vulnerable function to find source entry points
                 caller_of_callers = _get_function_callers(caller_addr_int)
-                for coc_addr, coc_name in caller_of_callers[:10]:  # Limit
+                for coc_addr, coc_name in caller_of_callers[:10]:
                     coc_callees = _get_function_callees(coc_addr)
                     for callee_addr, callee_name in coc_callees:
                         clean_name = callee_name.lstrip("_").lower()
@@ -446,16 +460,14 @@ def scan_command_injection(
                                     "via_addr": hex(coc_addr),
                                 })
                 
-                # Find paths from sources to this sink
-                for source in sources_found[:5]:  # Limit sources per sink
+                for source in sources_found[:5]:
                     source_addr = int(source["addr"], 16)
-                    # Find the function containing the source call
                     source_func = idaapi.get_func(source_addr)
                     if source_func:
                         paths = _find_paths_between_functions(
                             source_func.start_ea, caller_addr_int, max_depth
                         )
-                        for path in paths[:3]:  # Limit paths
+                        for path in paths[:3]:
                             exploit_paths.append(TaintPath(
                                 source_func=source["name"],
                                 source_addr=source["addr"],
@@ -469,7 +481,6 @@ def scan_command_injection(
                                 risk_level=_determine_risk_level(controllability, sink_category),
                             ))
                 
-                # Upgrade controllability if sources found
                 if sources_found and controllability == "low":
                     controllability = "medium"
                 if any(s.get("location") == "same_function" for s in sources_found):
@@ -491,12 +502,10 @@ def scan_command_injection(
                     exploit_paths=exploit_paths,
                 ))
     
-    # Sort by risk level
     risk_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     vulnerabilities.sort(key=lambda x: (risk_order.get(x["risk_level"], 4), -len(x["sources"])))
     
     return vulnerabilities
-
 
 @tool
 @idaread
@@ -507,7 +516,6 @@ def get_source_functions() -> dict:
         "total": len(ALL_SOURCES),
     }
 
-
 @tool
 @idaread
 def get_sink_functions() -> dict:
@@ -516,7 +524,6 @@ def get_sink_functions() -> dict:
         "categories": SINK_FUNCTIONS,
         "total": len(ALL_SINKS),
     }
-
 
 @tool
 @idaread
@@ -542,7 +549,6 @@ def trace_function_taint(
     
     func_name = ida_funcs.get_func_name(func.start_ea)
     
-    # Get all callees
     callees = _get_function_callees(func.start_ea)
     
     sources_in_func = []
@@ -552,7 +558,6 @@ def trace_function_taint(
     for callee_addr, callee_name in callees:
         clean_name = callee_name.lstrip("_").lower()
         
-        # Check if source
         for cat, funcs in SOURCE_FUNCTIONS.items():
             if any(clean_name == f.lower() for f in funcs):
                 sources_in_func.append({
@@ -561,7 +566,6 @@ def trace_function_taint(
                     "category": cat,
                 })
         
-        # Check if sink
         for cat, funcs in SINK_FUNCTIONS.items():
             if any(clean_name == f.lower() for f in funcs):
                 sinks_in_func.append({
@@ -570,14 +574,12 @@ def trace_function_taint(
                     "category": cat,
                 })
         
-        # Check if propagator
         if any(clean_name == p.lower() for p in STRING_PROPAGATORS):
             propagators_in_func.append({
                 "name": callee_name,
                 "addr": hex(callee_addr),
             })
     
-    # Try to get decompiled code
     pseudocode = None
     try:
         cfunc = ida_hexrays.decompile(func.start_ea)
@@ -590,7 +592,6 @@ def trace_function_taint(
     except:
         pass
     
-    # Determine if this function is vulnerable
     is_vulnerable = bool(sources_in_func and sinks_in_func)
     
     return {
@@ -602,7 +603,6 @@ def trace_function_taint(
         "is_vulnerable": is_vulnerable,
         "pseudocode": pseudocode,
     }
-
 
 @tool
 @idaread
@@ -618,7 +618,6 @@ def find_exploit_chains(
     if sink_addr is None:
         return [{"error": f"Sink function '{sink_name}' not found"}]
     
-    # Get sink category
     sink_category = "unknown"
     for cat, funcs in SINK_FUNCTIONS.items():
         if sink_name in funcs:
@@ -627,7 +626,6 @@ def find_exploit_chains(
     
     chains = []
     
-    # Get all callers of sink
     callers = _get_callers_of_function(sink_addr)
     
     for caller in callers:
@@ -637,7 +635,6 @@ def find_exploit_chains(
         
         caller_addr_int = int(caller_func_addr, 16)
         
-        # BFS to find sources that can reach this caller
         visited = set()
         queue = deque()
         queue.append((caller_addr_int, [caller]))
@@ -649,13 +646,11 @@ def find_exploit_chains(
                 continue
             visited.add(current_addr)
             
-            # Check if current function calls any sources
             callees = _get_function_callees(current_addr)
             for callee_addr, callee_name in callees:
                 clean_name = callee_name.lstrip("_").lower()
                 for source_cat, source_list in SOURCE_FUNCTIONS.items():
                     if any(clean_name == s.lower() for s in source_list):
-                        # Found a source!
                         chains.append({
                             "source_func": callee_name,
                             "source_category": source_cat,
@@ -667,7 +662,6 @@ def find_exploit_chains(
                             "entry_addr": hex(current_addr),
                         })
             
-            # Add callers of current function to queue
             current_callers = _get_function_callers(current_addr)
             for c_addr, c_name in current_callers:
                 if c_addr not in visited:
@@ -677,8 +671,6 @@ def find_exploit_chains(
                     }]
                     queue.append((c_addr, new_path))
     
-    # Sort by path length
     chains.sort(key=lambda x: x["path_length"])
     
-    return chains[:50]  # Limit results
-
+    return chains[:50]
