@@ -71,6 +71,12 @@ class MermaidGraph(TypedDict):
     edge_count: int
 
 
+# 全图构建时的节点上限，避免 get_taint_paths / build_call_graph 阻塞 IDA 主线程导致卡死
+MAX_GRAPH_NODES = 350
+# 全图构建时反向追踪深度上限（过深会指数膨胀）
+MAX_GRAPH_DEPTH_NO_ROOT = 6
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -263,9 +269,14 @@ def build_call_graph(
                             if callee_func.start_ea not in visited:
                                 queue.append((callee_func.start_ea, depth + 1))
     else:
-        # Build graph from all sinks back to sources
+        # Build graph from all sinks back to sources (capped to avoid IDA freeze)
+        depth_limit = min(max_depth, MAX_GRAPH_DEPTH_NO_ROOT)
         for sink_category, sink_list in SINK_FUNCTIONS.items():
+            if len(nodes) >= MAX_GRAPH_NODES:
+                break
             for sink_name in sink_list:
+                if len(nodes) >= MAX_GRAPH_NODES:
+                    break
                 sink_addr = _find_function_address(sink_name)
                 if sink_addr is None:
                     continue
@@ -274,6 +285,8 @@ def build_call_graph(
                 
                 # Get all callers
                 for xref in idautils.XrefsTo(sink_addr, 0):
+                    if len(nodes) >= MAX_GRAPH_NODES:
+                        break
                     if not xref.iscode:
                         continue
                     
@@ -284,18 +297,22 @@ def build_call_graph(
                     caller_name = ida_funcs.get_func_name(caller_func.start_ea)
                     add_edge(caller_func.start_ea, sink_addr, xref.frm, caller_name, sink_name)
                     
-                    # Trace back from caller
+                    # Trace back from caller (depth limited)
                     visited = {sink_addr, caller_func.start_ea}
                     queue = deque([(caller_func.start_ea, 1)])
                     
                     while queue:
+                        if len(nodes) >= MAX_GRAPH_NODES:
+                            break
                         current_addr, depth = queue.popleft()
                         
-                        if depth > max_depth:
+                        if depth > depth_limit:
                             continue
                         
                         # Get callers of current function
                         for back_xref in idautils.XrefsTo(current_addr, 0):
+                            if len(nodes) >= MAX_GRAPH_NODES:
+                                break
                             if not back_xref.iscode:
                                 continue
                             
@@ -539,17 +556,22 @@ def generate_dot_diagram(
     }
 
 
+# 单次返回污点路径数量上限，避免结果过大导致 IDA/连接卡死
+MAX_TAINT_PATHS_RETURN = 15
+
+
 @tool
 @idaread
 def get_taint_paths(
     sink_name: Annotated[Optional[str], "Filter by sink function name"] = None,
     source_category: Annotated[Optional[str], "Filter by source category"] = None,
-    max_paths: Annotated[int, "Maximum number of paths to return"] = 20,
+    max_paths: Annotated[int, "Maximum number of paths to return (capped at %d)" % MAX_TAINT_PATHS_RETURN] = 15,
 ) -> list[dict]:
     """Get all discovered taint propagation paths.
     
     Returns paths from source functions to sink functions.
-    """
+    Limited to %d paths per call to avoid IDA freeze.""" % MAX_TAINT_PATHS_RETURN
+    max_paths = min(max_paths, MAX_TAINT_PATHS_RETURN)
     graph = build_call_graph(max_depth=10)
     
     if "error" in graph:

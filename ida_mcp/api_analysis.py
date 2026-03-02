@@ -85,13 +85,19 @@ def _get_cached_strings_dict() -> list[dict]:
 # ============================================================================
 
 
+# 单次反编译数量上限，避免 MCP 一次请求过多导致 IDA 主线程长时间阻塞/卡死（大二进制建议 1～3）
+DECOMPILE_BATCH_LIMIT = 4
+
+
 @tool
 @idaread
 def decompile(
     addrs: Annotated[list[str] | str, "Function addresses to decompile"],
 ) -> list[dict]:
-    """Decompile functions to pseudocode"""
+    """Decompile functions to pseudocode. Limited to %d per call to avoid IDA freeze. For large bins, prefer 1-3 addrs per request.""" % DECOMPILE_BATCH_LIMIT
     addrs = normalize_list_input(addrs)
+    if len(addrs) > DECOMPILE_BATCH_LIMIT:
+        addrs = addrs[:DECOMPILE_BATCH_LIMIT]
     results = []
 
     for addr in addrs:

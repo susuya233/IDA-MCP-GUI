@@ -178,6 +178,14 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
 
 保存后重启 Cursor，即可在对话中调用 IDA 的反汇编、漏洞扫描等能力。**注意**：须先在 IDA 中通过 Edit → Plugins → MCP 启动服务，否则 Cursor 会报连接被拒绝。
 
+- **端口**：请确认 `mcp.json` 里写的是 **13337**（只开一个 IDA 并只启动一次 MCP，否则会占 13338 等端口，Cursor 连错会报 ECONNREFUSED）。
+- **为何 AI 跑 MCP 时 IDA 会卡住/闪退**：所有 MCP 工具都在 IDA 的**主线程**上执行（反汇编、反编译等都要用 IDA API）。AI 一次请求很多或很大的操作（例如批量反编译很多函数、或全图污点路径）时，主线程会长时间占用，IDA 会表现为无响应甚至“卡死”；若反编译或分析里触发 IDA/Hex-Rays 内部错误，可能直接闪退。建议：
+  - 在 Cursor 里**不要一次请求过多**（例如一次只反编译少量函数）；
+  - **追踪 sink 调用链并反编译**：先单独调用 `get_taint_paths`（可传 `sink_name` 如 `os_exec.Command`）拿到路径，再**分批**对关键函数反编译，每批 **1～3 个地址**，避免一次反编译 4+ 个大函数导致卡死或 “Connection closed”。
+  - 插件已做限制：污点路径单次最多返回 15 条、全图构建节点上限 350、反编译单次最多 4 个地址（大二进制建议 1～3）。
+  - 若 IDA 已卡住，可等待当前请求跑完，或关闭 Cursor 里正在跑的 MCP 调用；
+  - 若出现 “Connection closed” 或 “Missing ?session for SSE POST”，多为 Cursor 先用了 Streamable HTTP 再回退到 SSE，或连接被关闭，可重开 IDA 的 MCP（Edit → Plugins → MCP 再点一次），并确认只保留一个 MCP 服务（端口 13337）。
+
 ## 许可证
 
 MIT License
