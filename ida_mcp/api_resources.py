@@ -126,9 +126,10 @@ def functions_resource(
     offset: Annotated[int, "Starting index"] = 0,
     count: Annotated[int, "Maximum results (0=all)"] = 50,
 ) -> Page[Function]:
-    """List all functions in the IDB"""
+    """List all functions in the IDB (capped to avoid freeze on large binaries)."""
+    import itertools
     funcs = []
-    for ea in idautils.Functions():
+    for ea in itertools.islice(idautils.Functions(), 0, 1500):
         fn = idaapi.get_func(ea)
         if fn:
             try:
@@ -187,10 +188,11 @@ def globals_resource(
     offset: Annotated[int, "Starting index"] = 0,
     count: Annotated[int, "Maximum results (0=all)"] = 50,
 ) -> Page[Global]:
-    """List all global variables"""
+    """List all global variables (capped to avoid freeze)."""
     globals_list = []
-    for ea, name in idautils.Names():
-        # Skip functions
+    for i, (ea, name) in enumerate(idautils.Names()):
+        if i >= 4000:
+            break
         if idaapi.get_func(ea):
             continue
         globals_list.append(Global(addr=hex(ea), name=name))

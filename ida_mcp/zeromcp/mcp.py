@@ -402,7 +402,6 @@ class McpServer:
 
     def _mcp_tools_call(self, name: str, arguments: dict | None = None, _meta: dict | None = None) -> dict:
         """MCP tools/call method"""
-        # Wrap tool call in JSON-RPC request
         tool_response = self.tools.dispatch({
             "jsonrpc": "2.0",
             "method": name,

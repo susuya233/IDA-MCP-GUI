@@ -367,8 +367,9 @@ def scan_buffer_overflows(
                     ))
     
     if include_integer:
-        # Scan all functions for integer overflow patterns
-        for func_ea in idautils.Functions():
+        # Scan functions for integer overflow (capped to avoid freeze)
+        import itertools
+        for func_ea in itertools.islice(idautils.Functions(), 0, 1000):
             risks = _check_integer_overflow_risk(func_ea)
             for risk in risks:
                 vuln_id += 1

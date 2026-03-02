@@ -72,9 +72,9 @@ class MermaidGraph(TypedDict):
 
 
 # 全图构建时的节点上限，避免 get_taint_paths / build_call_graph 阻塞 IDA 主线程导致卡死
-MAX_GRAPH_NODES = 350
+MAX_GRAPH_NODES = 150
 # 全图构建时反向追踪深度上限（过深会指数膨胀）
-MAX_GRAPH_DEPTH_NO_ROOT = 6
+MAX_GRAPH_DEPTH_NO_ROOT = 4
 
 
 # ============================================================================
@@ -242,13 +242,14 @@ def build_call_graph(
         
         func_name = ida_funcs.get_func_name(func.start_ea)
         
-        # BFS from root
+        # BFS from root (node cap to avoid freeze)
+        _ROOT_BFS_CAP = 200
         visited = set()
         queue = deque([(func.start_ea, 0)])
-        
-        while queue:
+
+        while queue and len(visited) < _ROOT_BFS_CAP:
             current_addr, depth = queue.popleft()
-            
+
             if current_addr in visited or depth > max_depth:
                 continue
             visited.add(current_addr)
@@ -557,7 +558,7 @@ def generate_dot_diagram(
 
 
 # 单次返回污点路径数量上限，避免结果过大导致 IDA/连接卡死
-MAX_TAINT_PATHS_RETURN = 15
+MAX_TAINT_PATHS_RETURN = 8
 
 
 @tool
@@ -565,7 +566,7 @@ MAX_TAINT_PATHS_RETURN = 15
 def get_taint_paths(
     sink_name: Annotated[Optional[str], "Filter by sink function name"] = None,
     source_category: Annotated[Optional[str], "Filter by source category"] = None,
-    max_paths: Annotated[int, "Maximum number of paths to return (capped at %d)" % MAX_TAINT_PATHS_RETURN] = 15,
+    max_paths: Annotated[int, "Maximum number of paths to return (capped at %d)" % MAX_TAINT_PATHS_RETURN] = 8,
 ) -> list[dict]:
     """Get all discovered taint propagation paths.
     
@@ -663,11 +664,12 @@ def analyze_function_connectivity(
                         "type": callee_type,
                     })
     
-    # Find reachable sinks (BFS forward)
+    # Find reachable sinks (BFS forward, capped)
+    _BFS_NODE_CAP = 150
     visited = set()
     queue = deque([func.start_ea])
-    
-    while queue:
+
+    while queue and len(visited) < _BFS_NODE_CAP:
         current = queue.popleft()
         if current in visited:
             continue
@@ -691,14 +693,14 @@ def analyze_function_connectivity(
                             "category": cat,
                         })
                     
-                    if len(visited) < 100:  # Limit exploration
+                    if len(visited) < _BFS_NODE_CAP:
                         queue.append(callee_func.start_ea)
-    
-    # Find if reachable from sources (BFS backward)
+
+    # Find if reachable from sources (BFS backward, capped)
     visited = set()
     queue = deque([func.start_ea])
-    
-    while queue:
+
+    while queue and len(visited) < _BFS_NODE_CAP:
         current = queue.popleft()
         if current in visited:
             continue
@@ -720,7 +722,7 @@ def analyze_function_connectivity(
                         "category": cat,
                     })
                 
-                if len(visited) < 100:
+                if len(visited) < _BFS_NODE_CAP:
                     queue.append(caller_func.start_ea)
     
     # Remove duplicates

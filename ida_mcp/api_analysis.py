@@ -51,19 +51,20 @@ from .utils import (
 # Cache for idautils.Strings() to avoid rebuilding on every call
 _strings_cache: Optional[list[dict]] = None
 _strings_cache_md5: Optional[str] = None
+# Cap string cache size to avoid freeze on huge IDBs
+_STRINGS_CACHE_CAP = 15000
 
 
 def _get_cached_strings_dict() -> list[dict]:
-    """Get cached strings as dicts, rebuilding if IDB changed"""
+    """Get cached strings as dicts, rebuilding if IDB changed (capped)."""
     global _strings_cache, _strings_cache_md5
 
-    # Get current IDB modification hash
     current_md5 = ida_nalt.retrieve_input_file_md5()
 
-    # Rebuild cache if needed
     if _strings_cache is None or _strings_cache_md5 != current_md5:
         _strings_cache = []
-        for s in idautils.Strings():
+        import itertools
+        for s in itertools.islice(idautils.Strings(), 0, _STRINGS_CACHE_CAP):
             try:
                 _strings_cache.append(
                     {
@@ -86,7 +87,7 @@ def _get_cached_strings_dict() -> list[dict]:
 
 
 # 单次反编译数量上限，避免 MCP 一次请求过多导致 IDA 主线程长时间阻塞/卡死（大二进制建议 1～3）
-DECOMPILE_BATCH_LIMIT = 4
+DECOMPILE_BATCH_LIMIT = 2
 
 
 @tool
@@ -141,16 +142,15 @@ def decompile(
 def disasm(
     addrs: Annotated[list[str] | str, "Function addresses to disassemble"],
     max_instructions: Annotated[
-        int, "Max instructions per function (default: 5000, max: 50000)"
-    ] = 5000,
+        int, "Max instructions per function (default: 2000, max: 15000)"
+    ] = 2000,
     offset: Annotated[int, "Skip first N instructions (default: 0)"] = 0,
 ) -> list[dict]:
-    """Disassemble functions to assembly instructions"""
-    addrs = normalize_list_input(addrs)
+    """Disassemble functions to assembly instructions (max 2 addrs per call to avoid freeze)."""
+    addrs = normalize_list_input(addrs)[:2]
 
-    # Enforce max limit
-    if max_instructions <= 0 or max_instructions > 50000:
-        max_instructions = 50000
+    if max_instructions <= 0 or max_instructions > 15000:
+        max_instructions = 15000
 
     results = []
 
@@ -286,20 +286,25 @@ def disasm(
 # ============================================================================
 
 
+XREFS_TO_PER_ADDR_CAP = 200
+
+
 @tool
 @idaread
 def xrefs_to(
     addrs: Annotated[list[str] | str, "Addresses to find cross-references to"],
 ) -> list[dict]:
-    """Get all cross-references to specified addresses"""
-    addrs = normalize_list_input(addrs)
+    """Get cross-references to specified addresses (max 3 addrs, %d xrefs per addr).""" % XREFS_TO_PER_ADDR_CAP
+    addrs = normalize_list_input(addrs)[:3]
     results = []
 
     for addr in addrs:
         try:
             xrefs = []
             xref: ida_xref.xrefblk_t
-            for xref in idautils.XrefsTo(parse_address(addr)):
+            for i, xref in enumerate(idautils.XrefsTo(parse_address(addr))):
+                if i >= XREFS_TO_PER_ADDR_CAP:
+                    break
                 xrefs += [
                     Xref(
                         addr=hex(xref.frm),
@@ -411,9 +416,10 @@ def xrefs_to_field(queries: list[StructFieldQuery] | StructFieldQuery) -> list[d
 def callees(
     addrs: Annotated[list[str] | str, "Function addresses to get callees for"],
 ) -> list[dict]:
-    """Get all functions called by the specified functions"""
-    addrs = normalize_list_input(addrs)
+    """Get all functions called by the specified functions (max 3 addrs, 3000 insns per func)."""
+    addrs = normalize_list_input(addrs)[:3]
     results = []
+    _CALLEES_INSN_CAP = 3000
 
     for fn_addr in addrs:
         try:
@@ -427,7 +433,9 @@ def callees(
             func_end = idc.find_func_end(func_start)
             callees: list[dict[str, str]] = []
             current_ea = func_start
-            while current_ea < func_end:
+            insn_count = 0
+            while current_ea < func_end and insn_count < _CALLEES_INSN_CAP:
+                insn_count += 1
                 insn = idaapi.insn_t()
                 idaapi.decode_insn(insn, current_ea)
                 if insn.itype in [idaapi.NN_call, idaapi.NN_callfi, idaapi.NN_callni]:
@@ -464,14 +472,15 @@ def callees(
 def callers(
     addrs: Annotated[list[str] | str, "Function addresses to get callers for"],
 ) -> list[dict]:
-    """Get all functions that call the specified functions"""
-    addrs = normalize_list_input(addrs)
+    """Get all functions that call the specified functions (max 3 addrs, 200 callers per addr)."""
+    addrs = normalize_list_input(addrs)[:3]
     results = []
 
     for fn_addr in addrs:
         try:
             callers = {}
-            for caller_addr in idautils.CodeRefsTo(parse_address(fn_addr), 0):
+            import itertools
+            for caller_addr in itertools.islice(idautils.CodeRefsTo(parse_address(fn_addr), 0), 0, 200):
                 func = get_function(caller_addr, raise_error=False)
                 if not func:
                     continue
@@ -511,13 +520,19 @@ def entrypoints() -> list[Function]:
 # ============================================================================
 
 
+# 单次综合分析函数数量上限，避免主线程长时间阻塞
+ANALYZE_FUNCS_BATCH_LIMIT = 2
+
+
 @tool
 @idaread
 def analyze_funcs(
-    addrs: Annotated[list[str] | str, "Function addresses to comprehensively analyze"],
+    addrs: Annotated[list[str] | str, "Function addresses to comprehensively analyze (max %d per call)" % ANALYZE_FUNCS_BATCH_LIMIT],
 ) -> list[FunctionAnalysis]:
-    """Comprehensive function analysis: decompilation, xrefs, callees, strings, constants, blocks"""
+    """Comprehensive function analysis: decompilation, xrefs, callees, strings, constants, blocks. Limited to %d addrs per call.""" % ANALYZE_FUNCS_BATCH_LIMIT
     addrs = normalize_list_input(addrs)
+    if len(addrs) > ANALYZE_FUNCS_BATCH_LIMIT:
+        addrs = addrs[:ANALYZE_FUNCS_BATCH_LIMIT]
     results = []
     for addr in addrs:
         try:
@@ -843,9 +858,10 @@ def basic_blocks(
 @tool
 @idaread
 def find_paths(queries: list[PathQuery] | PathQuery) -> list[dict]:
-    """Find execution paths between source and target addresses"""
+    """Find execution paths between source and target addresses (max 3 queries per call)."""
     if isinstance(queries, dict):
         queries = [queries]
+    queries = queries[:3]
     results = []
 
     for query in queries:
@@ -1198,16 +1214,21 @@ def _find_insn_pattern(pattern: dict) -> list[str]:
 # ============================================================================
 
 
+EXPORT_FUNCS_BATCH_LIMIT = 3
+
+
 @tool
 @idaread
 def export_funcs(
-    addrs: Annotated[list[str] | str, "Function addresses to export"],
+    addrs: Annotated[list[str] | str, "Function addresses to export (max %d per call)" % EXPORT_FUNCS_BATCH_LIMIT],
     format: Annotated[
         str, "Export format: json (default), c_header, or prototypes"
     ] = "json",
 ) -> dict:
-    """Export function data in various formats"""
+    """Export function data in various formats. Limited to %d addrs per call.""" % EXPORT_FUNCS_BATCH_LIMIT
     addrs = normalize_list_input(addrs)
+    if len(addrs) > EXPORT_FUNCS_BATCH_LIMIT:
+        addrs = addrs[:EXPORT_FUNCS_BATCH_LIMIT]
     results = []
 
     for addr in addrs:
@@ -1270,8 +1291,9 @@ def callgraph(
     ],
     max_depth: Annotated[int, "Maximum depth for call graph traversal"] = 5,
 ) -> list[dict]:
-    """Build call graph starting from root functions"""
-    roots = normalize_list_input(roots)
+    """Build call graph starting from root functions (max 2 roots, 150 nodes per root to avoid freeze)."""
+    CALLGRAPH_MAX_NODES = 150
+    roots = normalize_list_input(roots)[:2]
     results = []
 
     for root in roots:
@@ -1294,7 +1316,7 @@ def callgraph(
             visited = set()
 
             def traverse(addr, depth):
-                if depth > max_depth or addr in visited:
+                if depth > max_depth or addr in visited or len(visited) >= CALLGRAPH_MAX_NODES:
                     return
                 visited.add(addr)
 
@@ -1395,7 +1417,8 @@ def analyze_strings(
     limit: Annotated[int, "Max matches per filter (default: 1000, max: 10000)"] = 1000,
     offset: Annotated[int, "Skip first N matches (default: 0)"] = 0,
 ) -> list[dict]:
-    """Analyze and filter strings in the binary"""
+    """Analyze and filter strings in the binary (xrefs capped per string)."""
+    import itertools
     if isinstance(filters, dict):
         filters = [filters]
 
@@ -1420,9 +1443,9 @@ def analyze_strings(
             if pattern and pattern not in s["string"].lower():
                 continue
 
-            # Add xref info
+            # Add xref info (cap 200 per string to avoid hang)
             s_ea = parse_address(s["addr"])
-            xrefs = [hex(x.frm) for x in idautils.XrefsTo(s_ea, 0)]
+            xrefs = [hex(x.frm) for x in itertools.islice(idautils.XrefsTo(s_ea, 0), 0, 200)]
             all_matches.append({**s, "xrefs": xrefs, "xref_count": len(xrefs)})
 
         # Apply pagination

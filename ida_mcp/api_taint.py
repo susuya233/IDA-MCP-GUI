@@ -640,10 +640,11 @@ def find_exploit_chains(
         visited = set()
         queue = deque()
         queue.append((caller_addr_int, [caller]))
-        
-        while queue:
+        _MAX_VISITED = 200
+
+        while queue and len(visited) < _MAX_VISITED:
             current_addr, path = queue.popleft()
-            
+
             if current_addr in visited or len(path) > max_depth:
                 continue
             visited.add(current_addr)

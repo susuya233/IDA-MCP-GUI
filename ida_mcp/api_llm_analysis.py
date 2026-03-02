@@ -431,6 +431,10 @@ def generate_analysis_prompt(
         },
     }
 
+# 扫描候选函数数量上限，避免全库遍历+反编译导致卡死
+BATCH_ANALYZE_SCAN_CAP = 600
+
+
 @tool
 @idaread
 def batch_analyze_functions(
@@ -441,12 +445,13 @@ def batch_analyze_functions(
     """Batch analyze multiple functions for LLM review.
     
     Selects interesting functions based on criteria and prepares analysis data.
-    """
+    Scans at most %d functions to avoid IDA freeze.""" % BATCH_ANALYZE_SCAN_CAP
+    import itertools
     import re
     
     results = []
     
-    all_funcs = list(idautils.Functions())
+    all_funcs = list(itertools.islice(idautils.Functions(), 0, BATCH_ANALYZE_SCAN_CAP))
     
     interesting_funcs = []
     
@@ -533,7 +538,9 @@ def get_binary_overview() -> dict:
     from . import ida_compat
     info = ida_compat.get_inf_structure()
 
-    func_count = sum(1 for _ in idautils.Functions())
+    import itertools
+    _func_iter = idautils.Functions()
+    func_count = sum(1 for _ in itertools.islice(_func_iter, 0, 50000))
     
     segments = []
     seg = ida_segment.get_first_seg()
@@ -567,7 +574,8 @@ def get_binary_overview() -> dict:
     
     dangerous_func_names = ["system", "popen", "strcpy", "sprintf", "gets", "exec"]
     found_dangerous = []
-    for func_ea in idautils.Functions():
+    _OVERVIEW_DANGEROUS_SCAN_CAP = 2000
+    for func_ea in itertools.islice(idautils.Functions(), 0, _OVERVIEW_DANGEROUS_SCAN_CAP):
         func_name = ida_funcs.get_func_name(func_ea)
         if any(d in func_name.lower() for d in dangerous_func_names):
             found_dangerous.append({

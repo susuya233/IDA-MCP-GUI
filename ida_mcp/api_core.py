@@ -43,19 +43,19 @@ from .sync import IDAError
 # Cache for idautils.Strings() to avoid rebuilding on every call
 _strings_cache: Optional[list[String]] = None
 _strings_cache_md5: Optional[str] = None
+_STRINGS_CACHE_CAP = 15000
 
 
 def _get_cached_strings() -> list[String]:
-    """Get cached strings, rebuilding if IDB changed"""
+    """Get cached strings, rebuilding if IDB changed (capped to avoid freeze)."""
     global _strings_cache, _strings_cache_md5
 
-    # Get current IDB modification hash
     current_md5 = ida_nalt.retrieve_input_file_md5()
 
-    # Rebuild cache if needed
     if _strings_cache is None or _strings_cache_md5 != current_md5:
         _strings_cache = []
-        for item in idautils.Strings():
+        import itertools
+        for item in itertools.islice(idautils.Strings(), 0, _STRINGS_CACHE_CAP):
             if item is None:
                 continue
             try:
@@ -112,17 +112,23 @@ def test_idb_meta():
     assert "filesize" in meta
 
 
+# 避免全库遍历导致卡死：lookup 用 "*" 时最多返回函数数
+LOOKUP_FUNCS_ALL_CAP = 80
+
+
 @tool
 @idaread
 def lookup_funcs(
-    queries: Annotated[list[str] | str, "Address(es) or name(s)"],
+    queries: Annotated[list[str] | str, "Address(es) or name(s). Do not use '*' for large binaries."],
 ) -> list[dict]:
-    """Get functions by address or name (auto-detects)"""
+    """Get functions by address or name (auto-detects). For listing many functions use list_funcs with filter."""
     queries = normalize_list_input(queries)
 
-    # Treat empty/"*" as "all functions"
+    # Treat empty/"*" as "first N functions" to avoid freezing on large binaries
     if not queries or (len(queries) == 1 and queries[0] in ("*", "")):
-        all_funcs = [get_function(addr) for addr in idautils.Functions()]
+        import itertools
+        it = idautils.Functions()
+        all_funcs = [get_function(addr) for addr in itertools.islice(it, 0, LOOKUP_FUNCS_ALL_CAP)]
         return [{"query": "*", "fn": fn, "error": None} for fn in all_funcs]
 
     if len(DEMANGLED_TO_EA) == 0:
@@ -245,19 +251,25 @@ def int_convert(
     return results
 
 
+# 构建函数列表时的上限，避免大二进制下 list_funcs 卡死
+LIST_FUNCS_CAP = 1500
+
+
 @tool
 @idaread
 def list_funcs(
     queries: Annotated[
         list[ListQuery] | ListQuery | str,
-        "List functions with optional filtering and pagination",
+        "List functions with optional filtering and pagination (capped for large binaries)",
     ],
 ) -> list[Page[Function]]:
-    """List functions"""
+    """List functions. Builds at most LIST_FUNCS_CAP functions per call to avoid IDA freeze."""
     queries = normalize_dict_list(
         queries, lambda s: {"offset": 0, "count": 50, "filter": s}
     )
-    all_functions = [get_function(addr) for addr in idautils.Functions()]
+    import itertools
+    it = idautils.Functions()
+    all_functions = [get_function(addr) for addr in itertools.islice(it, 0, LIST_FUNCS_CAP)]
 
     results = []
     for query in queries:
@@ -275,6 +287,10 @@ def list_funcs(
     return results
 
 
+# 构建全局变量列表时的上限
+LIST_GLOBALS_CAP = 4000
+
+
 @tool
 @idaread
 def list_globals(
@@ -283,12 +299,14 @@ def list_globals(
         "List global variables with optional filtering and pagination",
     ],
 ) -> list[Page[Global]]:
-    """List globals"""
+    """List globals (capped to avoid freeze on large IDBs)."""
     queries = normalize_dict_list(
         queries, lambda s: {"offset": 0, "count": 50, "filter": s}
     )
     all_globals: list[Global] = []
-    for addr, name in idautils.Names():
+    for i, (addr, name) in enumerate(idautils.Names()):
+        if i >= LIST_GLOBALS_CAP:
+            break
         if not idaapi.get_func(addr) and name is not None:
             all_globals.append(Global(addr=hex(addr), name=name))
 
