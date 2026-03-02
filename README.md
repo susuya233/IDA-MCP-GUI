@@ -1,6 +1,6 @@
 # IDA-MCP-GUI
 
-IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持的 IDA Pro 安全分析工具。
+IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持的 IDA Pro 安全分析工具。**支持 IDA 7.x / 8.x / 9.x（含 9.2）。**
 
 ## 功能特性
 
@@ -92,15 +92,43 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
 | `Ctrl+Shift+P` | 路径穿越扫描 |
 | `Ctrl+Shift+A` | 打开所有扫描窗口 |
 
-## 安装
+## 安装（让 IDA 能用）
 
-将整个 `ida_mcp` 文件夹和 `ida_mcp.py` 复制到 IDA Pro 的 plugins 目录：
+**兼容 IDA 7.x / 8.x / 9.x（含 9.2）**。
+
+### ⚠️ 必须先让 IDA 使用 Python
+
+本插件是 **Python 插件**。若 IDA 当前是 **IDC** 模式（底部控制台旁显示 “IDC - Native built-in language”），Python 插件不会加载，菜单里也不会出现 MCP。
+
+**切换到 Python 的方法：**
+
+- **方法一（推荐）**：在终端执行 IDA 自带的 Python 切换工具（先完全退出 IDA）：
+  ```bash
+  "/Applications/IDA Professional 9.2.app/Contents/MacOS/idapyswitch"
+  ```
+  按提示选择本机已安装的 **Python 3**，然后重新打开 IDA。
+- **方法二**：在 IDA 底部控制台左侧，点击当前显示的 **“IDC”**，在下拉菜单里选择 **“Python 3”** 或 **“Python”**，使当前脚本语言变为 Python。部分版本下，Python 插件只有在用该方法选过 Python 后才会被加载。
+
+切换成功后，重启 IDA，再在 **Edit → Plugins** 里应能看到 **MCP**。
+
+---
+
+1. **找到 IDA 的 plugins 目录**  
+   - **macOS**：`~/.idapro/plugins/`（IDA 实际读取这里，不是 Application Support）  
+   - Windows: `%APPDATA%\Hex-Rays\IDA Pro 9.2\plugins\`（或你的 IDA 版本）
+
+2. **复制两样到该目录**：本仓库的 **`ida_mcp.py`** 和整个 **`ida_mcp`** 文件夹（缺一不可）。
+
+3. **重启 IDA**，打开任意二进制后，菜单 **Edit → Plugins → MCP** 或按 **Ctrl+Alt+M**（Mac: **Ctrl+Option+M**）启动。
+
+将整个 `ida_mcp` 文件夹和 `ida_mcp.py` 复制到 IDA Pro 的 plugins 目录后，结构如下：
 
 ```
 %APPDATA%\Hex-Rays\IDA Pro\plugins\
 ├── ida_mcp.py
 └── ida_mcp\
     ├── __init__.py
+    ├── ida_compat.py   # IDA 9 兼容层
     ├── api_dangerous.py
     ├── api_taint.py
     ├── api_buffer.py
@@ -117,12 +145,38 @@ IDA Pro 漏洞扫描与分析插件 - 集成 MCP (Model Context Protocol) 支持
 ## 使用方法
 
 1. 在 IDA Pro 中加载目标二进制文件
-2. 按 `Ctrl+Alt+M` 启动 MCP 服务器
+2. 按 **Ctrl+Alt+M**（Mac: **Ctrl+Option+M**）启动 MCP 服务器
 3. 访问 Web 界面：
    - 配置页面: `http://127.0.0.1:13337/config.html`
    - 危险函数扫描: `http://127.0.0.1:13337/dangerous.html`
    - 命令注入扫描: `http://127.0.0.1:13337/cmdi.html`
 4. 或使用快捷键打开 IDA 内置窗口
+
+### 一键安装（macOS / Linux）
+
+在项目根目录执行：
+
+```bash
+./install_to_ida.sh
+```
+
+脚本会自动安装到 `~/.idapro/plugins/`，若检测到 IDA 应用包则同时安装到应用内 `plugins` 目录。
+
+### 在 Cursor 中使用 MCP
+
+在 Cursor 中可使用本插件的 MCP 工具（需先启动 IDA 并运行 MCP 插件）。在 **`~/.cursor/mcp.json`** 中加入：
+
+```json
+{
+  "mcpServers": {
+    "ida-mcp": {
+      "url": "http://127.0.0.1:13337/sse"
+    }
+  }
+}
+```
+
+保存后重启 Cursor，即可在对话中调用 IDA 的反汇编、漏洞扫描等能力。**注意**：须先在 IDA 中通过 Edit → Plugins → MCP 启动服务，否则 Cursor 会报连接被拒绝。
 
 ## 许可证
 

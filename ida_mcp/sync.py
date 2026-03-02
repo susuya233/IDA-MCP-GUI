@@ -2,16 +2,18 @@ import logging
 import queue
 import functools
 from enum import IntEnum
-import idaapi
 import ida_kernwin
 import idc
 from .rpc import McpToolError
+from . import ida_compat
 
 # ============================================================================
 # IDA Synchronization & Error Handling
 # ============================================================================
 
-ida_major, ida_minor = map(int, idaapi.get_kernel_version().split("."))
+_version_parts = ida_compat.get_kernel_version().split(".")[:2]
+ida_major = int(_version_parts[0]) if _version_parts else 0
+ida_minor = int(_version_parts[1]) if len(_version_parts) > 1 else 0
 
 
 class IDAError(McpToolError):
@@ -63,7 +65,7 @@ def _sync_wrapper(ff, safety_mode: IDASafety):
         finally:
             call_stack.get()
 
-    idaapi.execute_sync(runned, safety_mode)
+    ida_compat.execute_sync(runned, safety_mode)
     res = res_container.get()
     if isinstance(res, Exception):
         raise res
@@ -86,7 +88,7 @@ def idawrite(f):
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
         ff.__name__ = f.__name__
-        return sync_wrapper(ff, idaapi.MFF_WRITE)
+        return sync_wrapper(ff, ida_compat.MFF_WRITE)
 
     return wrapper
 
@@ -98,7 +100,7 @@ def idaread(f):
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
         ff.__name__ = f.__name__
-        return sync_wrapper(ff, idaapi.MFF_READ)
+        return sync_wrapper(ff, ida_compat.MFF_READ)
 
     return wrapper
 

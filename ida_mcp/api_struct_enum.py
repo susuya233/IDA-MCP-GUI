@@ -9,8 +9,12 @@ import ida_funcs
 import ida_name
 import ida_hexrays
 import ida_lines
-import ida_struct
-import ida_enum
+try:
+    import ida_struct
+    import ida_enum
+except ModuleNotFoundError:
+    ida_struct = None  # IDA 9 已合并到 ida_typeinf
+    ida_enum = None
 import ida_bytes
 import ida_typeinf
 import re
@@ -295,8 +299,10 @@ def suggest_structures(
     - Consistent field offsets
     - Cast patterns indicating structure types
     """
+    if ida_struct is None:
+        return []  # IDA 9: ida_struct 已合并到 ida_typeinf，此功能暂不可用
     suggestions = []
-    
+
     if func_addr:
         try:
             addr = int(func_addr, 16) if func_addr.startswith("0x") else int(func_addr)
@@ -396,9 +402,11 @@ def suggest_enums(
     - Repeated numeric constants
     - Values matching known patterns (socket types, flags, etc.)
     """
+    if ida_enum is None:
+        return []  # IDA 9
     suggestions = []
     seen_values = defaultdict(list)  # value -> list of contexts
-    
+
     if func_addr:
         try:
             addr = int(func_addr, 16) if func_addr.startswith("0x") else int(func_addr)
@@ -495,8 +503,10 @@ def suggest_type_fixes(
     - Missing structure types
     - Wrong integer sizes
     """
+    if ida_struct is None:
+        return []  # IDA 9
     suggestions = []
-    
+
     try:
         addr = int(func_addr, 16) if func_addr.startswith("0x") else int(func_addr)
     except:
@@ -592,8 +602,10 @@ def suggest_type_fixes(
 @idaread
 def get_existing_structures() -> list[dict]:
     """Get all currently defined structures in the IDB"""
+    if ida_struct is None:
+        return []  # IDA 9
     structures = []
-    
+
     idx = ida_struct.get_first_struc_idx()
     while idx != idaapi.BADADDR:
         sid = ida_struct.get_struc_by_idx(idx)
@@ -633,8 +645,10 @@ def get_existing_structures() -> list[dict]:
 @idaread
 def get_existing_enums() -> list[dict]:
     """Get all currently defined enums in the IDB"""
+    if ida_enum is None:
+        return []  # IDA 9
     enums = []
-    
+
     qty = ida_enum.get_enum_qty()
     for i in range(qty):
         eid = ida_enum.getn_enum(i)
@@ -671,6 +685,8 @@ def apply_enum_suggestion(
     values: Annotated[dict, "Dictionary of name -> value pairs"],
 ) -> dict:
     """Apply an enum suggestion by creating the enum in IDA"""
+    if ida_enum is None:
+        return {"error": "IDA 9: enum API 已合并到 ida_typeinf，此功能暂不可用"}
     try:
         # Check if enum already exists
         eid = ida_enum.get_enum(enum_name)

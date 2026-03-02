@@ -72,8 +72,12 @@ class McpHttpRequestHandler(BaseHTTPRequestHandler):
         """Override to suppress default logging or customize"""
         pass
 
-    def send_cors_headers(self, *, preflight = False):
-        origin = self.headers.get("Origin", "")
+    def send_cors_headers(self, *, preflight=False):
+        # parse_request() 失败时 self.headers 可能尚未设置，避免 AttributeError
+        headers = getattr(self, "headers", None)
+        if headers is None:
+            return
+        origin = headers.get("Origin", "")
         if not origin:
             return
         def is_allowed():
@@ -91,15 +95,20 @@ class McpHttpRequestHandler(BaseHTTPRequestHandler):
         if preflight:
             self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, Accept, X-Requested-With, Mcp-Session-Id, Mcp-Protocol-Version")
-            if self.headers.get("Access-Control-Request-Private-Network") == "true":
+            if headers.get("Access-Control-Request-Private-Network") == "true":
                 self.send_header("Access-Control-Allow-Private-Network", "true")
 
     def send_error(self, code, message=None, explain=None):
-        self.send_response(code)
-        self.send_header("Content-Type", "text/plain")
-        self.send_cors_headers()
-        self.end_headers()
-        self.wfile.write(f"{message}\n".encode("utf-8"))
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "text/plain")
+            self.send_cors_headers()
+            self.end_headers()
+            if message:
+                self.wfile.write(f"{message}\n".encode("utf-8"))
+        except (AttributeError, BrokenPipeError, ConnectionResetError, OSError):
+            # 畸形请求或客户端已断开，忽略
+            pass
 
     def handle(self):
         """Override to add error handling for connection errors"""

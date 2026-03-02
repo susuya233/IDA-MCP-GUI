@@ -400,7 +400,10 @@ def types_resource() -> list[dict]:
 @idaread
 def structs_resource() -> list[dict]:
     """Get all structures/unions"""
-    import ida_struct
+    try:
+        import ida_struct
+    except ModuleNotFoundError:
+        return []  # IDA 9: ida_struct 已移除
 
     structs = []
     for idx in range(ida_struct.get_struc_qty()):
@@ -421,8 +424,11 @@ def structs_resource() -> list[dict]:
 @idaread
 def struct_name_resource(name: Annotated[str, "Structure name"]) -> dict:
     """Get structure definition with fields"""
-    import ida_struct
-    import ida_typeinf
+    try:
+        import ida_struct
+        import ida_typeinf
+    except ModuleNotFoundError:
+        return {"error": "IDA 9: ida_struct 已合并到 ida_typeinf，此资源暂不可用"}
 
     sid = ida_struct.get_struc_id(name)
     if sid == idaapi.BADADDR:

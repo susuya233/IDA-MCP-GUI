@@ -10,8 +10,12 @@ import ida_name
 import ida_hexrays
 import ida_lines
 import ida_frame
-import ida_struct
 import ida_bytes
+try:
+    import ida_struct
+except ModuleNotFoundError:
+    ida_struct = None  # IDA 9: 使用 ida_typeinf
+import ida_typeinf
 import re
 
 from .rpc import tool
@@ -126,11 +130,34 @@ def _get_stack_frame_info(func_addr: int) -> dict:
     func = idaapi.get_func(func_addr)
     if not func:
         return {}
-    
+
+    # IDA 9: ida_struct 已移除，用 ida_typeinf + ida_frame.get_func_frame
+    if ida_struct is None:
+        frame_tif = ida_typeinf.tinfo_t()
+        if not ida_frame.get_func_frame(frame_tif, func):
+            return {"stack_size": func.frsize, "variables": []}
+        frame_udt = ida_typeinf.udt_type_data_t()
+        if not frame_tif.get_udt_details(frame_udt):
+            return {"stack_size": func.frsize, "variables": []}
+        variables = []
+        for udm in frame_udt:
+            offset = udm.offset // 8
+            size = (udm.end() - udm.offset) // 8 if hasattr(udm, "end") else (getattr(udm, "size", 0) // 8)
+            type_str = udm.type.dstr() if udm.type else "unknown"
+            variables.append({
+                "name": udm.name or f"var_{offset:X}",
+                "offset": offset,
+                "size": size,
+                "type": type_str,
+                "is_array": "[" in type_str,
+            })
+        return {"stack_size": func.frsize, "variables": variables}
+
+    # IDA 7/8: ida_struct + ida_frame.get_frame
     frame = ida_frame.get_frame(func)
     if not frame:
         return {"stack_size": func.frsize, "variables": []}
-    
+
     variables = []
     for i in range(ida_struct.get_struc_size(frame)):
         member = ida_struct.get_member(frame, i)
@@ -138,14 +165,13 @@ def _get_stack_frame_info(func_addr: int) -> dict:
             name = ida_struct.get_member_name(member.id)
             size = ida_struct.get_member_size(member)
             offset = member.soff
-            
-            # Determine if it's a buffer (array)
+
             tinfo = idaapi.tinfo_t()
             if ida_struct.get_member_tinfo(tinfo, member):
                 type_str = str(tinfo)
             else:
                 type_str = "unknown"
-            
+
             variables.append({
                 "name": name or f"var_{offset:X}",
                 "offset": offset,
@@ -153,7 +179,7 @@ def _get_stack_frame_info(func_addr: int) -> dict:
                 "type": type_str,
                 "is_array": "[" in type_str,
             })
-    
+
     return {
         "stack_size": func.frsize,
         "variables": variables,

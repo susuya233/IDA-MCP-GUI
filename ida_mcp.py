@@ -2,11 +2,38 @@
 
 This file serves as the entry point for IDA Pro's plugin system.
 It loads the actual implementation from the ida_mcp package.
+支持 IDA 7.x / 8.x / 9.x（含 9.2）。
 """
 
+# 加载时打印，便于确认插件是否被 IDA 加载（看 Output 窗口）
+try:
+    print("[ida_mcp] Loading plugin...")
+except Exception:
+    pass
+
 import sys
-import idaapi
 from typing import TYPE_CHECKING
+
+# IDA 9 中 plugin_t 与 PLUGIN_* 可能在 ida_idaapi，兼容旧版 idaapi
+try:
+    import ida_idaapi
+    _plugin_t = getattr(ida_idaapi, "plugin_t", None)
+    _PLUGIN_KEEP = getattr(ida_idaapi, "PLUGIN_KEEP", None)
+    _PLUGIN_HIDE = getattr(ida_idaapi, "PLUGIN_HIDE", None)
+    _PLUGIN_FIX = getattr(ida_idaapi, "PLUGIN_FIX", None)
+except ImportError:
+    ida_idaapi = None
+    _plugin_t = _PLUGIN_KEEP = _PLUGIN_HIDE = _PLUGIN_FIX = None
+
+import idaapi
+if _plugin_t is None:
+    _plugin_t = idaapi.plugin_t
+if _PLUGIN_KEEP is None:
+    _PLUGIN_KEEP = idaapi.PLUGIN_KEEP
+if _PLUGIN_HIDE is None:
+    _PLUGIN_HIDE = getattr(idaapi, "PLUGIN_HIDE", 0)
+if _PLUGIN_FIX is None:
+    _PLUGIN_FIX = getattr(idaapi, "PLUGIN_FIX", 0)
 
 if TYPE_CHECKING:
     from . import ida_mcp
@@ -23,8 +50,8 @@ def unload_package(package_name: str):
         del sys.modules[mod_name]
 
 
-class MCP(idaapi.plugin_t):
-    flags = idaapi.PLUGIN_KEEP
+class MCP(_plugin_t):
+    flags = _PLUGIN_KEEP
     comment = "MCP Plugin"
     help = "MCP"
     wanted_name = "MCP"
@@ -44,7 +71,7 @@ class MCP(idaapi.plugin_t):
             f"[MCP] Plugin loaded, use Edit -> Plugins -> MCP ({hotkey}) to start the server"
         )
         self.mcp: "ida_mcp.rpc.McpServer | None" = None
-        return idaapi.PLUGIN_KEEP
+        return _PLUGIN_KEEP
 
     def run(self, arg):
         if self.mcp:
@@ -99,5 +126,5 @@ def PLUGIN_ENTRY():
     return MCP()
 
 
-# IDA plugin flags
-PLUGIN_FLAGS = idaapi.PLUGIN_HIDE | idaapi.PLUGIN_FIX
+# IDA plugin flags（供部分版本使用）
+PLUGIN_FLAGS = _PLUGIN_HIDE | _PLUGIN_FIX

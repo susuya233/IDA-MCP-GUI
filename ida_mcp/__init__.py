@@ -11,6 +11,12 @@ Architecture:
 - api_*.py: Modular API implementations (71 tools + 24 resources)
 """
 
+# IDA 9.x 兼容：确保 idaapi.BADADDR 存在（IDA 9 中可能移至 ida_idaapi）
+from . import ida_compat
+import idaapi
+if not hasattr(idaapi, "BADADDR"):
+    idaapi.BADADDR = ida_compat.BADADDR
+
 # Import infrastructure modules
 from . import rpc
 from . import sync

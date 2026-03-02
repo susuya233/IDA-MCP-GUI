@@ -502,19 +502,37 @@ def batch_analyze_functions(
     
     return results
 
+def _inf_file_type(info) -> str:
+    """根据 inf 的 filetype 返回 'PE'、'ELF' 或 'other'，兼容 IDA 9"""
+    ft = getattr(info, "filetype", 0)
+    try:
+        f_PE = getattr(idaapi, "f_PE", 0)
+        f_ELF = getattr(idaapi, "f_ELF", 1)
+    except Exception:
+        import ida_ida
+        f_PE = getattr(ida_ida, "f_PE", 0)
+        f_ELF = getattr(ida_ida, "f_ELF", 1)
+    if ft == f_PE:
+        return "PE"
+    if ft == f_ELF:
+        return "ELF"
+    return "other"
+
+
 @tool
 @idaread
 def get_binary_overview() -> dict:
     """Get an overview of the binary suitable for LLM context.
-    
+
     Provides:
     - Binary metadata
     - Function statistics
     - Import/export information
     - Interesting patterns
     """
-    info = idaapi.get_inf_structure()
-    
+    from . import ida_compat
+    info = ida_compat.get_inf_structure()
+
     func_count = sum(1 for _ in idautils.Functions())
     
     segments = []
@@ -561,7 +579,7 @@ def get_binary_overview() -> dict:
         "filename": idaapi.get_root_filename(),
         "processor": info.procname,
         "bits": 64 if info.is_64bit() else 32,
-        "file_type": "PE" if info.filetype == idaapi.f_PE else "ELF" if info.filetype == idaapi.f_ELF else "other",
+        "file_type": _inf_file_type(info),
         "function_count": func_count,
         "segments": segments,
         "imports": imports,
